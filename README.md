@@ -39,7 +39,7 @@ If your API key loses access (e.g. subscription expires), the premium entities g
 ### HACS (recommended)
 
 1. In HACS, open **Integrations** → top-right **⋮** → **Custom repositories**.
-2. Add `https://github.com/jelitop/OKRWeather_HomeAssistant` with category **Integration**.
+2. Add `https://github.com/sysoppl/OKRWeather_HomeAssistant` with category **Integration**.
 3. Install **OKRWeather (Pogoda OKR)** from the list.
 4. Restart Home Assistant.
 
