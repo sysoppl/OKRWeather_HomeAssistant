@@ -17,6 +17,7 @@ from .const import (
     CONF_LIVE_INTERVAL,
     CONF_PROJECT_ID,
     CONF_STATION_ID,
+    CONF_STATION_KEY,
     CONF_STATION_LAT,
     CONF_STATION_LON,
     CONF_STATION_NAME,
@@ -73,6 +74,9 @@ async def async_setup_entry(
 
     station = StationInfo(
         appwrite_id=data[CONF_STATION_ID],
+        # Fall back to the Appwrite $id if station_key wasn't captured
+        # (older config entries created before the bug fix).
+        station_key=data.get(CONF_STATION_KEY) or data[CONF_STATION_ID],
         slug=data.get(CONF_STATION_SLUG, data[CONF_STATION_ID]),
         name=data.get(CONF_STATION_NAME, data[CONF_STATION_ID]),
         latitude=data.get(CONF_STATION_LAT),

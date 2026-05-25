@@ -23,7 +23,8 @@ type OKRWeatherConfigEntry = ConfigEntry[OKRWeatherData]
 class StationInfo:
     """Resolved metadata for the configured station."""
 
-    appwrite_id: str
+    appwrite_id: str          # Appwrite document $id — used for `station` relationship queries
+    station_key: str          # value of the `station_id` column — used for premium-table lookups
     slug: str
     name: str
     latitude: float | None

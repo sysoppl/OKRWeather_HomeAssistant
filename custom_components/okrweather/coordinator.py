@@ -263,7 +263,7 @@ class OKRWeatherForecastCoordinator(_OKRWeatherCoordinator):
         rows = await asyncio.gather(
             *(
                 self.client.latest_premium_row(
-                    PREMIUM_TABLES[key], station.appwrite_id
+                    PREMIUM_TABLES[key], station.station_key
                 )
                 for key in active_keys
             ),

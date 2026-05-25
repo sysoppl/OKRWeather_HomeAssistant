@@ -190,13 +190,23 @@ class OKRWeatherApiClient:
     async def latest_premium_row(
         self,
         table: str,
-        station_id: str,
+        station_key: str,
     ) -> dict[str, Any] | None:
-        """Return the most recent row for a premium table tied to a station."""
+        """Return the most recent row for a premium table tied to a station.
+
+        Filters by the ``station_id`` *string column* (not the ``station``
+        relationship), because not every premium table has the relationship —
+        e.g. ``sport-conditions`` and ``drying-conditions`` only carry the
+        plain string column. All premium tables share ``station_id`` though,
+        so this query is portable across every premium table.
+
+        ``station_key`` is the value stored in that column (sourced from the
+        weather-stations ``station_id`` column at config time).
+        """
         rows = await self._list_rows(
             table,
             queries=[
-                _q("equal", "station", [station_id]),
+                _q("equal", "station_id", [station_key]),
                 _q("orderDesc", "$createdAt"),
                 _q("limit", values=1),
             ],

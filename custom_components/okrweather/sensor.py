@@ -377,9 +377,13 @@ PREMIUM_SENSORS: tuple[OKRSensorDescription, ...] = (
     ),
     # Solar forecast
     OKRSensorDescription(
+        # Predicted total kWh for today — a continuously-updated forecast,
+        # not an energy totaliser. Drop SensorDeviceClass.ENERGY because HA
+        # requires its state_class to be total/total_increasing (it expects a
+        # monotonic counter for the energy dashboard). Keep the kWh unit so
+        # the value still reads naturally.
         key="solar_total_kwh",
         translation_key="solar_total_kwh",
-        device_class=SensorDeviceClass.ENERGY,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfEnergy.KILO_WATT_HOUR,
         suggested_display_precision=1,

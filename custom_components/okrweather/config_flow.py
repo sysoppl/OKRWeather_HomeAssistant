@@ -30,6 +30,7 @@ from .const import (
     CONF_LIVE_INTERVAL,
     CONF_PROJECT_ID,
     CONF_STATION_ID,
+    CONF_STATION_KEY,
     CONF_STATION_LAT,
     CONF_STATION_LON,
     CONF_STATION_NAME,
@@ -154,6 +155,11 @@ class OKRWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
                 station = self._chosen_station
                 data = {
                     CONF_STATION_ID: station["$id"],
+                    # station_id column on weather-stations is the business
+                    # key the AI writer functions use when populating premium
+                    # tables — store it separately so we can query premium
+                    # tables that lack a `station` relationship field.
+                    CONF_STATION_KEY: station.get("station_id") or station["$id"],
                     CONF_STATION_SLUG: station.get("slug", station["$id"]),
                     CONF_STATION_NAME: station.get("name", station["$id"]),
                     CONF_STATION_LAT: station.get("latitude"),
@@ -289,9 +295,10 @@ class OKRWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
         )
         try:
             assert self._chosen_station is not None
-            await client.latest_premium_row(
-                TABLE_COMFORT_INDEX, self._chosen_station["$id"]
+            station_key = (
+                self._chosen_station.get("station_id") or self._chosen_station["$id"]
             )
+            await client.latest_premium_row(TABLE_COMFORT_INDEX, station_key)
         except OKRWeatherApiAuthError:
             return False, "invalid_auth"
         except OKRWeatherApiPermissionError:
@@ -337,7 +344,8 @@ class OKRWeatherOptionsFlow(OptionsFlow):
                 )
                 try:
                     await client.latest_premium_row(
-                        TABLE_COMFORT_INDEX, current[CONF_STATION_ID]
+                        TABLE_COMFORT_INDEX,
+                        current.get(CONF_STATION_KEY) or current[CONF_STATION_ID],
                     )
                 except OKRWeatherApiAuthError:
                     errors[CONF_API_KEY] = "invalid_auth"

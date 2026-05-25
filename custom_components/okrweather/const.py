@@ -42,6 +42,7 @@ TABLE_AIR_QUALITY_TRENDS: Final = "air-quality-trends"
 # ── Config-entry keys ────────────────────────────────────────────────────────
 CONF_API_KEY: Final = "api_key"
 CONF_STATION_ID: Final = "station_id"          # Appwrite document $id
+CONF_STATION_KEY: Final = "station_key"        # value of weather-stations.station_id column
 CONF_STATION_NAME: Final = "station_name"      # human-readable, for entry title
 CONF_STATION_SLUG: Final = "station_slug"
 CONF_STATION_LAT: Final = "station_lat"
