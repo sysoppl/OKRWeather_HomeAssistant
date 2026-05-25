@@ -211,10 +211,15 @@ class OKRWeatherApiClient:
         *,
         queries: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Wrap GET /databases/{db}/tables/{t}/rows and return the row list."""
+        """Wrap GET /tablesdb/{db}/tables/{t}/rows and return the row list.
+
+        Path note: Appwrite renamed `/databases/.../tables/...` to
+        `/tablesdb/.../tables/...` in the August 2025 TablesDB API release
+        (Appwrite 1.8). The old path now returns 404.
+        """
         data = await self._request(
             "GET",
-            f"/databases/{DATABASE_ID}/tables/{table_id}/rows",
+            f"/tablesdb/{DATABASE_ID}/tables/{table_id}/rows",
             params={"queries[]": queries or []},
         )
         return data.get("rows", []) if isinstance(data, dict) else []
@@ -242,7 +247,7 @@ class OKRWeatherApiClient:
 
         headers = {
             "X-Appwrite-Project": self._project_id,
-            "X-Appwrite-Response-Format": "1.7.0",
+            "X-Appwrite-Response-Format": "1.8.0",
             "Accept": "application/json",
         }
         if self._api_key:
