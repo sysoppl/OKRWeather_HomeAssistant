@@ -1,0 +1,8 @@
+{
+    "name": "OKRWeather (Pogoda OKR)",
+    "homeassistant": "2026.3.0",
+    "hacs": "2.0.5",
+    "render_readme": true,
+    "country": ["PL"],
+    "zip_release": false
+}

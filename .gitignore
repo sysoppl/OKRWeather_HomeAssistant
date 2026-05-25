@@ -1,0 +1,42 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.Python
+build/
+dist/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Home Assistant test config / artifacts
+.HA_VERSION
+config/
+.storage/
+.cloud/
+home-assistant_v2.db
+home-assistant.log*
+
+# Coverage / pytest
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+.cache/
+
+# Local secrets
+.env
+.env.local
+secrets.yaml
