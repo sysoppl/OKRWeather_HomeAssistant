@@ -1,0 +1,112 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Choose a station",
+        "description": "Pick the OKRWeather station you want to monitor. Each station becomes its own device.",
+        "data": {
+          "station_id": "Station"
+        }
+      },
+      "credentials": {
+        "title": "API key & refresh intervals",
+        "description": "Configuring **{station_name}**.\n\nLeave the API key blank to receive free public weather data only. Paste your premium API key to unlock comfort index, frost alerts, solar forecasts and more.",
+        "data": {
+          "api_key": "Appwrite API key (optional)",
+          "live_interval": "Live data refresh (seconds)",
+          "forecast_interval": "Forecast / premium refresh (seconds)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Re-enter API key",
+        "description": "Your OKRWeather API key was rejected. Paste a new key to restore premium features, or leave blank to fall back to the free tier.",
+        "data": {
+          "api_key": "Appwrite API key"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the OKRWeather backend. Check your internet connection.",
+      "invalid_auth": "The API key is invalid.",
+      "no_premium": "This API key does not have access to premium tables.",
+      "unknown_station": "The selected station no longer exists.",
+      "unknown": "Unexpected error. See the Home Assistant log for details."
+    },
+    "abort": {
+      "already_configured": "This station is already configured.",
+      "no_stations": "The backend returned no active stations.",
+      "reauth_successful": "API key updated."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OKRWeather settings",
+        "description": "Change the API key or how often Home Assistant polls the OKRWeather backend.",
+        "data": {
+          "api_key": "Appwrite API key (leave blank to disable premium)",
+          "live_interval": "Live data refresh (seconds, 60–86400)",
+          "forecast_interval": "Forecast / premium refresh (seconds, 3600–86400)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the OKRWeather backend.",
+      "invalid_auth": "The API key is invalid.",
+      "no_premium": "This API key does not have access to premium tables.",
+      "unknown": "Unexpected error. See the Home Assistant log for details."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": { "name": "Temperature" },
+      "apparent_temperature": { "name": "Apparent temperature" },
+      "dew_point": { "name": "Dew point" },
+      "humidity": { "name": "Humidity" },
+      "pressure": { "name": "Pressure" },
+      "wind_speed": { "name": "Wind speed" },
+      "wind_gust": { "name": "Wind gust" },
+      "wind_max_daily_gust": { "name": "Max daily wind gust" },
+      "wind_bearing": { "name": "Wind bearing" },
+      "precipitation_rate": { "name": "Precipitation rate" },
+      "precipitation_today": { "name": "Precipitation today" },
+      "uv_index": { "name": "UV index" },
+      "solar_radiation": { "name": "Solar radiation" },
+      "ground_temperature": { "name": "Ground temperature" },
+      "soil_moisture": { "name": "Soil moisture" },
+      "snow_depth": { "name": "Snow depth" },
+      "vapor_pressure_deficit": { "name": "Vapor pressure deficit" },
+      "pm2_5": { "name": "PM2.5" },
+      "pm10": { "name": "PM10" },
+      "carbon_monoxide": { "name": "Carbon monoxide" },
+      "nitrogen_dioxide": { "name": "Nitrogen dioxide" },
+      "ammonia": { "name": "Ammonia" },
+      "active_alerts_count": { "name": "Active weather alerts" },
+      "comfort_score": { "name": "Comfort index" },
+      "comfort_label": { "name": "Comfort label" },
+      "frost_probability": { "name": "Frost probability" },
+      "frost_level": { "name": "Frost level" },
+      "frost_window": { "name": "Frost window" },
+      "solar_total_kwh": { "name": "Solar forecast (today)" },
+      "solar_peak_kw": { "name": "Solar peak power" },
+      "solar_efficiency": { "name": "Solar panel efficiency" },
+      "solar_production_label": { "name": "Solar production label" },
+      "running_score": { "name": "Running conditions" },
+      "running_label": { "name": "Running label" },
+      "cycling_score": { "name": "Cycling conditions" },
+      "cycling_label": { "name": "Cycling label" },
+      "drying_score": { "name": "Laundry drying score" },
+      "drying_label": { "name": "Laundry drying label" },
+      "drying_estimated_hours": { "name": "Laundry drying time" },
+      "outfit_recommendation": { "name": "Outfit recommendation" },
+      "pressure_alert_label": { "name": "Pressure alert" },
+      "storm_status": { "name": "Storm status" },
+      "air_quality_trend": { "name": "Air quality trend" }
+    },
+    "binary_sensor": {
+      "weather_alert_active": { "name": "Weather alert active" },
+      "frost_alert_active": { "name": "Frost alert active" },
+      "storm_alert_active": { "name": "Storm alert active" }
+    }
+  }
+}

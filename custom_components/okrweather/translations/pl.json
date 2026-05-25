@@ -1,0 +1,112 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Wybierz stację",
+        "description": "Wybierz stację OKRWeather, którą chcesz monitorować. Każda stacja staje się oddzielnym urządzeniem.",
+        "data": {
+          "station_id": "Stacja"
+        }
+      },
+      "credentials": {
+        "title": "Klucz API i częstotliwość odświeżania",
+        "description": "Konfigurowanie **{station_name}**.\n\nPozostaw klucz API pusty, aby otrzymywać tylko bezpłatne publiczne dane pogodowe. Wklej klucz API, aby odblokować indeks komfortu, alerty przymrozkowe, prognozy fotowoltaiki i więcej.",
+        "data": {
+          "api_key": "Klucz API Appwrite (opcjonalny)",
+          "live_interval": "Odświeżanie danych na żywo (sekundy)",
+          "forecast_interval": "Odświeżanie prognoz / funkcji premium (sekundy)"
+        }
+      },
+      "reauth_confirm": {
+        "title": "Wprowadź klucz API ponownie",
+        "description": "Twój klucz API OKRWeather został odrzucony. Wklej nowy klucz, aby przywrócić funkcje premium, lub pozostaw pole puste, aby wrócić do darmowej wersji.",
+        "data": {
+          "api_key": "Klucz API Appwrite"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z OKRWeather. Sprawdź połączenie z Internetem.",
+      "invalid_auth": "Klucz API jest nieprawidłowy.",
+      "no_premium": "Ten klucz API nie ma dostępu do tabel premium.",
+      "unknown_station": "Wybrana stacja już nie istnieje.",
+      "unknown": "Nieoczekiwany błąd. Sprawdź dziennik Home Assistant."
+    },
+    "abort": {
+      "already_configured": "Ta stacja jest już skonfigurowana.",
+      "no_stations": "Serwer nie zwrócił żadnych aktywnych stacji.",
+      "reauth_successful": "Klucz API zaktualizowany."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Ustawienia OKRWeather",
+        "description": "Zmień klucz API lub częstotliwość odpytywania serwera OKRWeather przez Home Assistant.",
+        "data": {
+          "api_key": "Klucz API Appwrite (puste = bez premium)",
+          "live_interval": "Odświeżanie danych na żywo (sekundy, 60–86400)",
+          "forecast_interval": "Odświeżanie prognoz / premium (sekundy, 3600–86400)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Nie można połączyć się z OKRWeather.",
+      "invalid_auth": "Klucz API jest nieprawidłowy.",
+      "no_premium": "Ten klucz API nie ma dostępu do tabel premium.",
+      "unknown": "Nieoczekiwany błąd. Sprawdź dziennik Home Assistant."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "temperature": { "name": "Temperatura" },
+      "apparent_temperature": { "name": "Temperatura odczuwalna" },
+      "dew_point": { "name": "Punkt rosy" },
+      "humidity": { "name": "Wilgotność" },
+      "pressure": { "name": "Ciśnienie" },
+      "wind_speed": { "name": "Prędkość wiatru" },
+      "wind_gust": { "name": "Porywy wiatru" },
+      "wind_max_daily_gust": { "name": "Maks. porywy wiatru (dziś)" },
+      "wind_bearing": { "name": "Kierunek wiatru" },
+      "precipitation_rate": { "name": "Natężenie opadów" },
+      "precipitation_today": { "name": "Opady dzisiaj" },
+      "uv_index": { "name": "Indeks UV" },
+      "solar_radiation": { "name": "Natężenie promieniowania słonecznego" },
+      "ground_temperature": { "name": "Temperatura gruntu" },
+      "soil_moisture": { "name": "Wilgotność gleby" },
+      "snow_depth": { "name": "Pokrywa śnieżna" },
+      "vapor_pressure_deficit": { "name": "Niedobór ciśnienia pary (VPD)" },
+      "pm2_5": { "name": "PM2.5" },
+      "pm10": { "name": "PM10" },
+      "carbon_monoxide": { "name": "Tlenek węgla" },
+      "nitrogen_dioxide": { "name": "Dwutlenek azotu" },
+      "ammonia": { "name": "Amoniak" },
+      "active_alerts_count": { "name": "Aktywne ostrzeżenia" },
+      "comfort_score": { "name": "Indeks komfortu" },
+      "comfort_label": { "name": "Etykieta komfortu" },
+      "frost_probability": { "name": "Prawdopodobieństwo przymrozku" },
+      "frost_level": { "name": "Poziom przymrozku" },
+      "frost_window": { "name": "Okno przymrozku" },
+      "solar_total_kwh": { "name": "Prognoza fotowoltaiki (dziś)" },
+      "solar_peak_kw": { "name": "Maks. moc fotowoltaiki" },
+      "solar_efficiency": { "name": "Sprawność paneli" },
+      "solar_production_label": { "name": "Etykieta produkcji energii" },
+      "running_score": { "name": "Warunki do biegania" },
+      "running_label": { "name": "Etykieta biegania" },
+      "cycling_score": { "name": "Warunki do roweru" },
+      "cycling_label": { "name": "Etykieta roweru" },
+      "drying_score": { "name": "Indeks schnięcia prania" },
+      "drying_label": { "name": "Etykieta schnięcia prania" },
+      "drying_estimated_hours": { "name": "Szacowany czas schnięcia" },
+      "outfit_recommendation": { "name": "Rekomendacja ubioru" },
+      "pressure_alert_label": { "name": "Alert ciśnieniowy" },
+      "storm_status": { "name": "Status burzy" },
+      "air_quality_trend": { "name": "Trend jakości powietrza" }
+    },
+    "binary_sensor": {
+      "weather_alert_active": { "name": "Aktywny alert pogodowy" },
+      "frost_alert_active": { "name": "Aktywny alert przymrozkowy" },
+      "storm_alert_active": { "name": "Aktywny alert burzowy" }
+    }
+  }
+}
