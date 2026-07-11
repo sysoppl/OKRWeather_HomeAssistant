@@ -1,13 +1,13 @@
 """Async Appwrite REST client for OKRWeather.
 
-The client speaks Appwrite's TablesDB REST API directly so we don't pull in the
-full Appwrite SDK (which would ship its own aiohttp session and complicate
-HA's lifecycle). Two access modes:
+The client speaks Appwrite's TablesDB REST API directly so we don't pull in
+the full Appwrite SDK (which would ship its own aiohttp session and
+complicate HA's lifecycle). Two access modes:
 
-* **Anonymous** (no API key) — only tables with `read("any")` permission are
-  reachable. That covers stations, live readings, forecasts and alerts.
-* **API key** — bypasses document-level label gating so premium AI tables
-  (comfort, frost, solar, etc.) become readable too.
+* **Anonymous** (no API key) — only tables with ``read("any")`` permission are
+  reachable: stations, live readings, lightning, forecasts and alerts.
+* **API key** — bypasses row-level label gating so the premium AI tables
+  (comfort, radar, storm, pressure, frost, solar, air-trend) become readable.
 
 The query format follows Appwrite ≥ 1.6: each query is a JSON-encoded string
 like ``{"method":"equal","attribute":"station","values":["xyz"]}`` passed in
@@ -29,8 +29,12 @@ from .const import (
     DEFAULT_ENDPOINT,
     DEFAULT_PROJECT_ID,
     LOGGER,
+    TABLE_ALERTS,
+    TABLE_DAILY_FORECASTS,
+    TABLE_HOURLY_FORECASTS,
+    TABLE_RADAR_STATUS,
+    TABLE_STATIONS,
 )
-
 
 # ── Exceptions ──────────────────────────────────────────────────────────────
 
@@ -44,31 +48,22 @@ class OKRWeatherApiCommunicationError(OKRWeatherApiError):
 
 
 class OKRWeatherApiAuthError(OKRWeatherApiError):
-    """Raised when the API key is missing, malformed, or lacks the right scope."""
+    """Raised when credentials are missing or rejected (HTTP 401).
+
+    Note: Appwrite answers *anonymous* requests to label-gated tables with
+    401 as well, so for premium tables this simply means "no valid access".
+    """
 
 
 class OKRWeatherApiPermissionError(OKRWeatherApiError):
-    """Raised when the request is rejected for permission reasons.
-
-    Distinct from auth errors: the credentials are *valid*, but the caller is
-    not allowed to read the requested table (e.g. anonymous call to a premium
-    table). The coordinator uses this signal to disable premium entities
-    gracefully instead of failing the whole setup.
-    """
+    """Raised when valid credentials lack access to a table (HTTP 403)."""
 
 
 # ── Query builder ────────────────────────────────────────────────────────────
 
 
 def _q(method: str, attribute: str | None = None, values: Any = None) -> str:
-    """Build one Appwrite query string.
-
-    Appwrite expects each query as a compact JSON object. Examples::
-
-        _q("equal", "station", ["abc"])       -> {"method":"equal",...}
-        _q("orderDesc", "$createdAt")          -> {"method":"orderDesc",...}
-        _q("limit", values=1)                  -> {"method":"limit","values":[1]}
-    """
+    """Build one Appwrite query string."""
     payload: dict[str, Any] = {"method": method}
     if attribute is not None:
         payload["attribute"] = attribute
@@ -92,10 +87,7 @@ class OKRWeatherApiClient:
         api_key: str | None = None,
         request_timeout: int = 15,
     ) -> None:
-        """Initialise the client.
-
-        The session is borrowed from HA — never close it here.
-        """
+        """Initialise the client. The session is borrowed from HA."""
         self._session = session
         self._endpoint = endpoint.rstrip("/")
         self._project_id = project_id
@@ -107,53 +99,40 @@ class OKRWeatherApiClient:
         """Whether a non-empty API key was supplied."""
         return bool(self._api_key)
 
-    # ── Public table fetches ────────────────────────────────────────────────
+    # ── Public tables ───────────────────────────────────────────────────────
 
-    async def list_stations(self) -> list[dict[str, Any]]:
-        """Return all active weather stations."""
-        return await self._list_rows(
-            "weather-stations",
-            queries=[_q("equal", "is_active", [True]), _q("limit", values=50)],
-        )
+    async def list_stations(self, *, active_only: bool = True) -> list[dict[str, Any]]:
+        """Return the weather stations."""
+        queries = [_q("limit", values=100)]
+        if active_only:
+            queries.insert(0, _q("equal", "is_active", [True]))
+        return await self._list_rows(TABLE_STATIONS, queries=queries)
 
-    async def latest_weather(self, station_id: str) -> dict[str, Any] | None:
-        """Return the most recent weather row for the given station, or None."""
+    async def latest_station_row(
+        self, table: str, station_appwrite_id: str
+    ) -> dict[str, Any] | None:
+        """Return the newest row of a station-related public table, or None."""
         rows = await self._list_rows(
-            "weather-data",
+            table,
             queries=[
-                _q("equal", "station", [station_id]),
+                _q("equal", "station", [station_appwrite_id]),
                 _q("orderDesc", "$createdAt"),
                 _q("limit", values=1),
             ],
         )
         return rows[0] if rows else None
 
-    async def latest_air(self, station_id: str) -> dict[str, Any] | None:
-        """Return the most recent air-quality row, or None when not available."""
-        rows = await self._list_rows(
-            "air-quality-data",
-            queries=[
-                _q("equal", "station", [station_id]),
-                _q("orderDesc", "$createdAt"),
-                _q("limit", values=1),
-            ],
-        )
-        return rows[0] if rows else None
-
-    async def active_alerts(self) -> list[dict[str, Any]]:
-        """Return weather alerts (we filter for unexpired ones client-side)."""
+    async def recent_alerts(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Return recent weather alerts (expiry is filtered client-side)."""
         return await self._list_rows(
-            "weather-alerts",
-            queries=[
-                _q("orderDesc", "$createdAt"),
-                _q("limit", values=25),
-            ],
+            TABLE_ALERTS,
+            queries=[_q("orderDesc", "$createdAt"), _q("limit", values=limit)],
         )
 
     async def hourly_forecasts(self, city_id: str, hours: int = 48) -> list[dict[str, Any]]:
-        """Return up to `hours` hourly forecast rows for `city_id`."""
+        """Return up to `hours` upcoming hourly forecast rows for a city."""
         return await self._list_rows(
-            "hourly-forecasts",
+            TABLE_HOURLY_FORECASTS,
             queries=[
                 _q("equal", "cityId", [city_id]),
                 _q("orderAsc", "forecastTime"),
@@ -162,9 +141,9 @@ class OKRWeatherApiClient:
         )
 
     async def daily_forecasts(self, city_id: str, days: int = 10) -> list[dict[str, Any]]:
-        """Return up to `days` daily forecast rows for `city_id`."""
+        """Return up to `days` daily forecast rows for a city."""
         return await self._list_rows(
-            "daily-forecasts",
+            TABLE_DAILY_FORECASTS,
             queries=[
                 _q("equal", "cityId", [city_id]),
                 _q("orderAsc", "forecastDate"),
@@ -172,46 +151,36 @@ class OKRWeatherApiClient:
             ],
         )
 
-    async def all_hourly_forecasts(self, limit: int = 500) -> list[dict[str, Any]]:
-        """Return the latest hourly forecast rows across *all* cities.
+    async def recent_hourly_forecasts(self, limit: int = 250) -> list[dict[str, Any]]:
+        """Return the freshest hourly rows across all cities.
 
-        Used during setup to discover the cityId nearest the chosen station.
+        Used once at setup to discover which forecast cities exist (each row
+        carries cityId, cityName, lat and lon).
         """
         return await self._list_rows(
-            "hourly-forecasts",
-            queries=[
-                _q("orderDesc", "fetchedAt"),
-                _q("limit", values=limit),
-            ],
+            TABLE_HOURLY_FORECASTS,
+            queries=[_q("orderDesc", "fetchedAt"), _q("limit", values=limit)],
         )
 
     # ── Premium tables (require API key) ────────────────────────────────────
 
-    async def latest_premium_row(
-        self,
-        table: str,
-        station_key: str,
-    ) -> dict[str, Any] | None:
-        """Return the most recent row for a premium table tied to a station.
+    async def recent_insight_rows(self, table: str, limit: int) -> list[dict[str, Any]]:
+        """Return the newest rows of a premium AI table (all stations mixed).
 
-        Filters by the ``station_id`` *string column* (not the ``station``
-        relationship), because not every premium table has the relationship —
-        e.g. ``sport-conditions`` and ``drying-conditions`` only carry the
-        plain string column. All premium tables share ``station_id`` though,
-        so this query is portable across every premium table.
-
-        ``station_key`` is the value stored in that column (sourced from the
-        weather-stations ``station_id`` column at config time).
+        The caller groups rows per station client-side — one request serves
+        every configured station instead of one request per station.
         """
-        rows = await self._list_rows(
+        return await self._list_rows(
             table,
-            queries=[
-                _q("equal", "station_id", [station_key]),
-                _q("orderDesc", "$createdAt"),
-                _q("limit", values=1),
-            ],
+            queries=[_q("orderDesc", "$createdAt"), _q("limit", values=limit)],
         )
-        return rows[0] if rows else None
+
+    async def radar_rows(self, limit: int = 25) -> list[dict[str, Any]]:
+        """Return recent radar-status rows (one row per analysed city)."""
+        return await self._list_rows(
+            TABLE_RADAR_STATUS,
+            queries=[_q("orderDesc", "analyzed_at"), _q("limit", values=limit)],
+        )
 
     # ── Internal HTTP ───────────────────────────────────────────────────────
 
@@ -221,12 +190,7 @@ class OKRWeatherApiClient:
         *,
         queries: list[str] | None = None,
     ) -> list[dict[str, Any]]:
-        """Wrap GET /tablesdb/{db}/tables/{t}/rows and return the row list.
-
-        Path note: Appwrite renamed `/databases/.../tables/...` to
-        `/tablesdb/.../tables/...` in the August 2025 TablesDB API release
-        (Appwrite 1.8). The old path now returns 404.
-        """
+        """Wrap GET /tablesdb/{db}/tables/{t}/rows and return the row list."""
         data = await self._request(
             "GET",
             f"/tablesdb/{DATABASE_ID}/tables/{table_id}/rows",
@@ -269,7 +233,7 @@ class OKRWeatherApiClient:
                     text = await resp.text()
                     if resp.status == 401:
                         raise OKRWeatherApiAuthError(
-                            f"Invalid credentials ({resp.status}): {text[:200]}"
+                            f"Unauthorized ({resp.status}) on {path}: {text[:200]}"
                         )
                     if resp.status == 403:
                         raise OKRWeatherApiPermissionError(
@@ -287,7 +251,7 @@ class OKRWeatherApiClient:
                         raise OKRWeatherApiError(
                             f"Invalid JSON from {path}: {exc}"
                         ) from exc
-        except asyncio.TimeoutError as exc:
+        except TimeoutError as exc:
             raise OKRWeatherApiCommunicationError(
                 f"Timeout fetching {path} after {self._timeout}s"
             ) from exc
