@@ -24,7 +24,7 @@ Three independent polling loops keep traffic minimal and data fresh:
 ### Free tier (no API key required)
 
 - **Weather entity** per station — live measurements merged with hourly, daily and twice-daily forecasts for the city nearest the station. When the station's rain gauge is measuring precipitation, the current condition reflects the *actual* rain, not the forecast.
-- **Live sensors** — temperature, apparent temperature, dew point, humidity, pressure, wind speed/gust/direction, max daily gust, precipitation rate, daily precipitation, UV index, solar radiation, light level, UV irradiance, ground temperature, soil moisture, snow depth, vapor pressure deficit, ionizing radiation.
+- **Live sensors** — temperature, apparent temperature, dew point, humidity, pressure (reduced to sea level using the station's elevation and temperature; the raw reading is available as a disabled-by-default *Station pressure* sensor), wind speed/gust/direction, max daily gust, precipitation rate, daily precipitation, UV index, solar radiation, light level, UV irradiance, ground temperature, soil moisture, snow depth, vapor pressure deficit, ionizing radiation.
 - **Air quality** — PM2.5, PM10, computed US-EPA AQI, CO, NO₂, NH₃ (for stations with an air probe).
 - **Weather alerts** — filtered to the station's own alert area (`powiat`), as a count sensor and a binary sensor with full details.
 - **Diagnostics** — *Station online* binary sensor (goes off when the station stops reporting) and *Last station update* timestamp.

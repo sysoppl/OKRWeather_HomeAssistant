@@ -103,6 +103,7 @@
       "dew_point": { "name": "Punkt rosy" },
       "humidity": { "name": "Wilgotność" },
       "pressure": { "name": "Ciśnienie" },
+      "station_pressure": { "name": "Ciśnienie stacyjne" },
       "wind_speed": { "name": "Prędkość wiatru" },
       "wind_gust": { "name": "Porywy wiatru" },
       "wind_max_daily_gust": { "name": "Maksymalny dzienny poryw wiatru" },

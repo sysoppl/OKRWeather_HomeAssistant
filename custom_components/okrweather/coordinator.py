@@ -40,7 +40,13 @@ from .const import (
     TABLE_RADAR_STATUS,
     TABLE_WEATHER,
 )
-from .util import age_minutes, match_city, parse_iso, row_matches_station
+from .util import (
+    age_minutes,
+    match_city,
+    parse_iso,
+    row_matches_station,
+    sea_level_pressure,
+)
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -178,6 +184,20 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
                     "weather": None,
                     "air": None,
                     "lightning": None,
+                }
+            # Stations report absolute pressure at their elevation; derive
+            # the sea-level value once here so every consumer agrees.
+            if isinstance(weather := result.get("weather"), dict):
+                result = {
+                    **result,
+                    "weather": {
+                        **weather,
+                        "sea_level_pressure_hpa": sea_level_pressure(
+                            weather.get("air_pressure_hpa"),
+                            station.elevation_m,
+                            weather.get("air_temperature_c"),
+                        ),
+                    },
                 }
             # Alerts are regional — publish each station's pre-filtered slice
             # so all entities agree. No alert_location_id means no alerts

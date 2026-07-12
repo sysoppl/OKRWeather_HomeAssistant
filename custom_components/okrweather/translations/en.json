@@ -103,6 +103,7 @@
       "dew_point": { "name": "Dew point" },
       "humidity": { "name": "Humidity" },
       "pressure": { "name": "Pressure" },
+      "station_pressure": { "name": "Station pressure" },
       "wind_speed": { "name": "Wind speed" },
       "wind_gust": { "name": "Wind gust" },
       "wind_max_daily_gust": { "name": "Max daily wind gust" },

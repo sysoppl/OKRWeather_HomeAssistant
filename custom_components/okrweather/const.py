@@ -96,6 +96,7 @@ CONF_STATION_SLUG: Final = "station_slug"
 CONF_STATION_CITY: Final = "station_city"
 CONF_STATION_LAT: Final = "station_lat"
 CONF_STATION_LON: Final = "station_lon"
+CONF_STATION_ELEVATION: Final = "station_elevation"
 CONF_ALERT_LOCATION_ID: Final = "alert_location_id"
 
 # ── Refresh-interval bounds (seconds) ────────────────────────────────────────

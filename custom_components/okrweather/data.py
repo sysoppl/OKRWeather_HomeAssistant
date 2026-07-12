@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from .const import (
     CONF_ALERT_LOCATION_ID,
     CONF_STATION_CITY,
+    CONF_STATION_ELEVATION,
     CONF_STATION_ID,
     CONF_STATION_KEY,
     CONF_STATION_LAT,
@@ -42,6 +43,7 @@ class StationConfig:
     city: str | None      # display city; links the station to forecast/radar cities
     latitude: float | None
     longitude: float | None
+    elevation_m: float | None  # used to reduce station pressure to sea level
     alert_location_id: str | None
 
     # Resolved lazily against live data; not persisted.
@@ -61,6 +63,7 @@ class StationConfig:
             city=data.get(CONF_STATION_CITY),
             latitude=data.get(CONF_STATION_LAT),
             longitude=data.get(CONF_STATION_LON),
+            elevation_m=data.get(CONF_STATION_ELEVATION),
             alert_location_id=data.get(CONF_ALERT_LOCATION_ID),
         )
 
@@ -78,6 +81,8 @@ class StationConfig:
             self.latitude = float(row["latitude"])
         if isinstance(row.get("longitude"), (int, float)):
             self.longitude = float(row["longitude"])
+        if isinstance(row.get("elevation_m"), (int, float)):
+            self.elevation_m = float(row["elevation_m"])
         self.alert_location_id = row.get("alert_location_id") or self.alert_location_id
 
 

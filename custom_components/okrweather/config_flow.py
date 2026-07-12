@@ -43,6 +43,7 @@ from .const import (
     CONF_LIVE_INTERVAL,
     CONF_PROJECT_ID,
     CONF_STATION_CITY,
+    CONF_STATION_ELEVATION,
     CONF_STATION_ID,
     CONF_STATION_KEY,
     CONF_STATION_LAT,
@@ -84,6 +85,7 @@ def station_subentry_data(row: dict[str, Any]) -> dict[str, Any]:
         CONF_STATION_CITY: row.get("city"),
         CONF_STATION_LAT: row.get("latitude"),
         CONF_STATION_LON: row.get("longitude"),
+        CONF_STATION_ELEVATION: row.get("elevation_m"),
         CONF_ALERT_LOCATION_ID: row.get("alert_location_id"),
     }
 

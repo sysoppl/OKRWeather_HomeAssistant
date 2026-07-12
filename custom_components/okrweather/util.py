@@ -141,6 +141,30 @@ def _slugify(value: str) -> str:
     return value.lower().translate(replacements)
 
 
+def sea_level_pressure(
+    pressure_hpa: Any,
+    elevation_m: float | None,
+    temperature_c: Any,
+) -> float | None:
+    """Reduce station pressure to sea level (temperature-compensated).
+
+    Standard barometric reduction: P0 = P · (1 − L·h / (T + L·h + 273.15))^−5.257
+    with L = 0.0065 K/m. Falls back to the ISA temperature (15 °C) when the
+    station temperature is missing, and to the raw value when the station
+    has no elevation on record.
+    """
+    if not isinstance(pressure_hpa, (int, float)):
+        return None
+    if not isinstance(elevation_m, (int, float)) or elevation_m == 0:
+        return round(float(pressure_hpa), 2)
+    temp = float(temperature_c) if isinstance(temperature_c, (int, float)) else 15.0
+    lapse = 0.0065 * float(elevation_m)
+    return round(
+        float(pressure_hpa) * (1 - lapse / (temp + lapse + 273.15)) ** -5.257,
+        2,
+    )
+
+
 def compute_epa_aqi(pm25: float | None) -> int | None:
     """US EPA AQI from a PM2.5 concentration (µg/m³).
 
