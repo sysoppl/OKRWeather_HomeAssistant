@@ -1,28 +1,25 @@
 # OKRWeather (Pogoda OKR)
 
-Hyperlocal weather data for **Powiat Krapkowicki** (Opolskie, Poland) — live readings from physical stations in Gogolin, Krapkowice and surrounding villages, plus forecasts, alerts and AI-derived advisories.
+Hyperlocal weather data for **Powiat Krapkowicki / Opolski** (Opolskie, Poland) — live readings from physical stations in Gogolin, Ligota Prószkowska, Zielina and surrounding villages, plus forecasts, alerts and AI insights.
 
 ## What you get
 
 **Free (no API key):**
-- Live weather (temperature, humidity, wind, pressure, UV, dew point, soil moisture, ground temp, precipitation)
-- Air quality (PM2.5, PM10, CO, NO₂, NH₃)
-- Hourly and daily forecasts as a HA `weather` entity
-- Weather alerts (warning sensor + binary)
+- Live weather (temperature, humidity, wind, pressure, UV, dew point, soil moisture, ground temp, precipitation and more)
+- Air quality (PM2.5, PM10, computed AQI, CO, NO₂, NH₃)
+- Hourly, daily and twice-daily forecasts as a HA `weather` entity per station
+- Weather alerts filtered to your station's area
+- Station online / last update diagnostics
 
 **Premium (with API key):**
-- Comfort index 0–100
-- Frost alert (probability, window, advisory)
+- Comfort index (score + level)
+- AI radar analysis (rain intensity, trend, ETA, 30/60-min rain probability)
+- Storm tracker (proximity, intensity, ETA, lightning stats)
+- Pressure alert (level, trend, change rate)
+- Frost alert (probability, level, window)
 - Solar production forecast (kWh, peak kW, efficiency)
-- Running & cycling condition scores
-- Laundry drying conditions (VPD-based)
-- Outfit recommendations
-- Pressure-headache alert
-- Storm tracker
 - Air-quality trend
 
 ## After installing
 
-Add the integration via **Settings → Devices & Services → Add integration → OKRWeather**.
-
-Provide your Appwrite API key only if you have a premium subscription — leave blank for free public data.
+Add the integration via **Settings → Devices & Services → Add integration → OKRWeather**, optionally paste your premium API key, then tick the stations you want. More stations can be added later via **Add weather station** on the integration page.

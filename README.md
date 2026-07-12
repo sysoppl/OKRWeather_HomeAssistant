@@ -3,36 +3,45 @@
 [![hacs_badge](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://github.com/hacs/integration)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Home Assistant custom integration for **Pogoda OKR / OKRWeather** — a hyperlocal weather network for Powiat Krapkowicki (Opolskie, Poland) with physical sensor stations in Gogolin, Krapkowice, Zdzieszowice and surrounding villages.
+Home Assistant custom integration for **Pogoda OKR / OKRWeather** — a hyperlocal weather network for Powiat Krapkowicki / Opolski (Opolskie, Poland) with physical sensor stations in Gogolin, Ligota Prószkowska, Zielina and surrounding villages.
 
 The integration talks directly to the OKRWeather Appwrite backend at `api.skydark.pl`. No middleware, no cloud account required for free data.
+
+## Architecture (v2)
+
+One **hub** entry holds the backend connection and the optional premium API key. Each **station** is a *subentry* of that hub — added, removed or extended at any time from the integration page (**Add weather station**) without re-entering credentials. Every station becomes its own device with a weather entity and a full set of sensors.
+
+Three independent polling loops keep traffic minimal and data fresh:
+
+| Loop | Default | What it fetches |
+|---|---|---|
+| Live | 5 min | Station readings, air quality, lightning, government alerts |
+| AI insights | 10 min | The premium AI tables (single batched request per table for all stations) |
+| Forecast | 30 min | Hourly + daily forecasts per city |
 
 ## Features
 
 ### Free tier (no API key required)
 
-Pulled from public Appwrite tables (`read("any")` permission):
-
-- **Weather entity** with hourly + daily forecasts for the city nearest your station
-- **Live sensors** — temperature, apparent temperature, dew point, humidity, pressure, wind speed/gust/bearing, precipitation rate, daily precipitation, UV index, solar radiation, ground temperature, soil moisture, snow depth, vapor pressure deficit
-- **Air quality sensors** — PM2.5, PM10, CO, NO₂, NH₃ (where the station has an air-quality probe)
-- **Weather alerts** — count sensor + binary sensor with full alert details as attributes
+- **Weather entity** per station — live measurements merged with hourly, daily and twice-daily forecasts for the city nearest the station. When the station's rain gauge is measuring precipitation, the current condition reflects the *actual* rain, not the forecast.
+- **Live sensors** — temperature, apparent temperature, dew point, humidity, pressure, wind speed/gust/direction, max daily gust, precipitation rate, daily precipitation, UV index, solar radiation, light level, UV irradiance, ground temperature, soil moisture, snow depth, vapor pressure deficit, ionizing radiation.
+- **Air quality** — PM2.5, PM10, computed US-EPA AQI, CO, NO₂, NH₃ (for stations with an air probe).
+- **Weather alerts** — filtered to the station's own alert area (`powiat`), as a count sensor and a binary sensor with full details.
+- **Diagnostics** — *Station online* binary sensor (goes off when the station stops reporting) and *Last station update* timestamp.
 
 ### Premium tier (API key required)
 
-Requires an Appwrite API key with `rows.read` scope, issued by the OKRWeather team to active subscribers. The key unlocks AI-derived advisory tables:
+The key unlocks the **active** AI analysis tables — each exposed with proper `ENUM` sensors (translated states, usable in automations) plus rich attributes including the advisory text in your language (PL/EN, configurable):
 
-- **Comfort Index** (0–100 score with PL/EN label)
-- **Frost alert** (probability, level, time window, advisory text)
-- **Solar forecast** (today's kWh, peak kW, panel efficiency, production label)
-- **Sport conditions** (running and cycling scores + labels)
-- **Drying conditions** (VPD-based laundry-drying score and estimated hours)
-- **Outfit recommendation**
-- **Pressure-headache alert**
-- **Storm tracker** (binary sensor + status)
-- **Air-quality trend** label
+- **Comfort Index** — 0–100 score + level enum with per-factor score breakdown
+- **AI Radar Analysis** — rain intensity & trend enums, radar rain rate, rain ETA, closest rain distance, 30/60-min rain probability, plus *radar rain* and *rain approaching* binary sensors
+- **Storm Tracker** — proximity & intensity enums, storm ETA, lightning count/distance, *storm detected* binary sensor
+- **Pressure Alert** — alert level & trend enums, change rate, *pressure alert* binary sensor
+- **Frost Alert** — probability, level enum, frost window, *frost alert* binary sensor
+- **Solar Forecast** — today's kWh, peak kW, efficiency, production label enum, parsed hourly production curve as attribute
+- **Air Quality Trend** — trend enum (waiting for AQ hardware; stays unknown until sensors exist)
 
-If your API key loses access (e.g. subscription expires), the premium entities go `unavailable` and the integration falls back to free-tier behavior without breaking your dashboard.
+Stale AI rows are dropped automatically — if a backend function stops publishing, the entities go `unknown` instead of freezing on old data. If the API key is revoked, Home Assistant starts a re-authentication flow.
 
 ## Installation
 
@@ -50,17 +59,21 @@ Copy `custom_components/okrweather/` into your Home Assistant `config/custom_com
 ## Configuration
 
 1. **Settings → Devices & Services → Add Integration → OKRWeather**.
-2. Pick your station from the dropdown (populated from the live `weather-stations` table).
-3. (Optional) Paste your Appwrite API key to enable premium features. Leave blank for free data.
-4. Set the refresh intervals:
-   - **Live data**: 60 s – 24 h (default 300 s / 5 min). The backend updates physical sensor readings about every 60 s.
-   - **Forecasts and premium tables**: 1 h – 24 h (default 1 h). The backend regenerates these every 4–6 h, so polling faster is wasted bandwidth.
+2. (Optional) Paste your premium API key. Advanced mode also exposes the endpoint/project fields.
+3. Tick the stations you want — all are pre-selected.
+4. Later:
+   - **Add weather station** on the integration page adds another station.
+   - Deleting a station subentry removes its device and entities.
+   - **Configure** adjusts the three polling intervals and the advisory language.
+   - **Reconfigure** changes the endpoint/project/API key without losing stations.
 
-You can change either interval, or swap the API key, at any time via **Configure** without removing the integration.
+### Upgrading from v1
+
+Config entries are migrated automatically: each old entry becomes a hub with its station attached as a subentry — entities keep their IDs and history. If you had several v1 entries you'll end up with several hubs; keep one, delete the rest and re-add those stations via **Add weather station**.
 
 ## How to get a premium API key
 
-Premium features are part of the OKRWeather subscription tiers (3/6/12-month plans). Sign up at [pogodaokr.pl](https://pogodaokr.pl) and ask support to issue an API key for Home Assistant — they'll grant a key scoped to the premium tables your subscription covers.
+Premium features are part of the OKRWeather subscription tiers (3/6/12-month plans). Sign up at [pogodaokr.pl](https://pogodaokr.pl) and ask support to issue an API key for Home Assistant.
 
 ## Entity reference
 
@@ -68,32 +81,47 @@ Premium features are part of the OKRWeather subscription tiers (3/6/12-month pla
 |---|---|---|
 | `weather` | `weather.<station>` | Free |
 | `sensor` | `sensor.<station>_temperature` etc. | Free |
-| `sensor` | `sensor.<station>_pm2_5` etc. | Free (if station has air probe) |
-| `sensor` | `sensor.<station>_active_alerts_count` | Free |
-| `binary_sensor` | `binary_sensor.<station>_weather_alert_active` | Free |
-| `sensor` | `sensor.<station>_comfort_score` etc. | Premium |
-| `sensor` | `sensor.<station>_frost_probability` etc. | Premium |
-| `sensor` | `sensor.<station>_solar_total_kwh` etc. | Premium |
-| `sensor` | `sensor.<station>_running_score` etc. | Premium |
-| `sensor` | `sensor.<station>_drying_score` etc. | Premium |
-| `binary_sensor` | `binary_sensor.<station>_frost_alert_active` | Premium |
-| `binary_sensor` | `binary_sensor.<station>_storm_alert_active` | Premium |
+| `sensor` | `sensor.<station>_pm2_5`, `_aqi` etc. | Free (air probe) |
+| `sensor` | `sensor.<station>_active_weather_alerts` | Free |
+| `binary_sensor` | `binary_sensor.<station>_weather_alert`, `_station_online` | Free |
+| `sensor` | `sensor.<station>_comfort_index`, `_comfort_level` | Premium |
+| `sensor` | `sensor.<station>_radar_*`, `_rain_probability_*` | Premium |
+| `sensor` | `sensor.<station>_storm_*`, `_lightning_*` | Premium |
+| `sensor` | `sensor.<station>_pressure_alert_level`, `_pressure_trend` | Premium |
+| `sensor` | `sensor.<station>_frost_*` | Premium |
+| `sensor` | `sensor.<station>_solar_*` | Premium |
+| `sensor` | `sensor.<station>_air_quality_trend` | Premium |
+| `binary_sensor` | `_frost_alert`, `_storm_detected`, `_radar_rain`, `_rain_approaching`, `_pressure_alert` | Premium |
 
-Some sensors are disabled by default (ground temperature, soil moisture, snow depth, gas concentrations) — enable them from the device page if your station reports them.
+Some sensors are disabled by default (ground temperature, soil moisture, snow depth, gas concentrations, radiation, light level, lightning distance) — enable them from the device page if your station reports them.
 
-## Notes for users in non-Polish locales
+## Automation ideas
 
-The OKRWeather backend is regional and only covers `Powiat Krapkowicki, PL`. If you're outside this area, the live sensor data will not be relevant — but the integration still works as a learning resource for talking to an Appwrite backend from Home Assistant.
+```yaml
+# Close the awning when a storm is approaching
+trigger:
+  - platform: state
+    entity_id: binary_sensor.gogolin_rondo_rain_approaching
+    to: "on"
+condition:
+  - condition: numeric_state
+    entity_id: sensor.gogolin_rondo_rain_eta
+    below: 30
+action:
+  - service: cover.close_cover
+    target: { entity_id: cover.awning }
+```
 
 ## Languages
 
-UI is translated to English and Polish.
+UI is translated to English and Polish. AI advisory texts follow the HA language by default and can be forced to PL/EN in the options.
 
 ## Troubleshooting
 
-- **"Could not reach the OKRWeather backend"** — check that `api.skydark.pl` resolves and is reachable from your Home Assistant host. The integration uses CloudFlare-fronted endpoints.
-- **Premium sensors stay `unavailable`** — your API key may not include the required scope, or it may have been revoked. Reconfigure via **Configure** to enter a new key.
-- **Weather entity shows `unknown` condition** — the forecast condition string from the backend didn't map to any of HA's condition vocabulary. Enable debug logging and open an issue with the raw value.
+- **"Could not reach the OKRWeather backend"** — check that `api.skydark.pl` resolves and is reachable from your Home Assistant host.
+- **Premium sensors stay `unknown`** — either the backend function hasn't published a fresh row (rows older than the per-feature freshness window are ignored), or the station has no data for that feature (e.g. air-quality trend without AQ hardware).
+- **Re-authentication keeps appearing** — the API key was revoked or lost its scope; paste a new one or leave blank to drop to the free tier.
+- Download **diagnostics** from the integration page when filing an issue — the API key is redacted automatically.
 
 Enable debug logging:
 
@@ -108,11 +136,12 @@ logger:
 
 The integration follows the modern (Home Assistant ≥ 2026.3) custom-component patterns:
 
-- `runtime_data` on `ConfigEntry`
-- Typed config entry alias (`OKRWeatherConfigEntry`)
-- Two `DataUpdateCoordinator`s (live + forecast)
+- Hub entry + **config subentries** for stations (`ConfigSubentryFlow`)
+- `runtime_data` with a typed config entry alias (`OKRWeatherConfigEntry`)
+- Three `DataUpdateCoordinator`s (live / insights / forecast) with batched queries
+- `ENUM` sensors with translated states, `icons.json`, diagnostics, reauth + reconfigure flows
+- Automatic v1 → v2 entry migration that moves devices/entities onto subentries
 - Pure-aiohttp REST client (no Appwrite SDK)
-- `has_entity_name = True` with translation keys
 
 ## License
 
@@ -120,5 +149,4 @@ The integration follows the modern (Home Assistant ≥ 2026.3) custom-component 
 
 ## Credits
 
-- Data: [Pogoda OKR](https://pogodaokr.pl) — public weather network for Powiat Krapkowicki
-- Scaffolding inspired by [ludeeus/integration_blueprint](https://github.com/ludeeus/integration_blueprint)
+- Data: [Pogoda OKR](https://pogodaokr.pl) — public weather network for Powiat Krapkowicki / Opolski
