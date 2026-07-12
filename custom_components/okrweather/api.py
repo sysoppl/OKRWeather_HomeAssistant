@@ -151,15 +151,20 @@ class OKRWeatherApiClient:
             ],
         )
 
-    async def recent_hourly_forecasts(self, limit: int = 250) -> list[dict[str, Any]]:
-        """Return the freshest hourly rows across all cities.
+    async def discover_forecast_cities(self, limit: int = 500) -> list[dict[str, Any]]:
+        """Return slim rows for discovering which forecast cities exist.
 
-        Used once at setup to discover which forecast cities exist (each row
-        carries cityId, cityName, lat and lon).
+        Uses the daily-forecasts table (≈10 rows per city instead of ≈240 in
+        hourly-forecasts, so the window can't silently drop a whole city) and
+        selects only the columns needed for matching.
         """
         return await self._list_rows(
-            TABLE_HOURLY_FORECASTS,
-            queries=[_q("orderDesc", "fetchedAt"), _q("limit", values=limit)],
+            TABLE_DAILY_FORECASTS,
+            queries=[
+                _q("select", values=["cityId", "cityName", "lat", "lon"]),
+                _q("orderDesc", "fetchedAt"),
+                _q("limit", values=limit),
+            ],
         )
 
     # ── Premium tables (require API key) ────────────────────────────────────

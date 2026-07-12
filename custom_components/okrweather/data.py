@@ -91,3 +91,7 @@ class OKRWeatherData:
     forecast_coordinator: OKRWeatherForecastCoordinator
     stations: dict[str, StationConfig]  # keyed by subentry_id
     premium_enabled: bool = False
+    # Number of active stations on the BACKEND (not just configured ones);
+    # sizes the newest-N window of the batched AI-table fetches so a growing
+    # fleet can't starve a hub that only configured a few stations.
+    backend_station_count: int = 0
