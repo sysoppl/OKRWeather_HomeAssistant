@@ -1,0 +1,80 @@
+{
+  "entity": {
+    "sensor": {
+      "wind_max_daily_gust": { "default": "mdi:weather-windy" },
+      "wind_bearing": { "default": "mdi:compass" },
+      "uv_index": { "default": "mdi:sun-wireless" },
+      "light_level": { "default": "mdi:brightness-6" },
+      "radiation": { "default": "mdi:radioactive" },
+      "active_alerts_count": { "default": "mdi:alert" },
+      "comfort_score": { "default": "mdi:emoticon-happy-outline" },
+      "comfort_label": {
+        "default": "mdi:emoticon-neutral-outline",
+        "state": {
+          "excellent": "mdi:emoticon-excited-outline",
+          "good": "mdi:emoticon-happy-outline",
+          "fair": "mdi:emoticon-neutral-outline",
+          "poor": "mdi:emoticon-sad-outline",
+          "very_poor": "mdi:emoticon-dead-outline"
+        }
+      },
+      "frost_probability": { "default": "mdi:snowflake-thermometer" },
+      "frost_level": { "default": "mdi:snowflake-alert" },
+      "solar_total_kwh": { "default": "mdi:solar-power-variant" },
+      "solar_peak_kw": { "default": "mdi:solar-power" },
+      "solar_efficiency": { "default": "mdi:sun-angle" },
+      "solar_production_label": { "default": "mdi:solar-panel" },
+      "pressure_alert_level": { "default": "mdi:gauge-full" },
+      "pressure_trend": {
+        "default": "mdi:swap-vertical",
+        "state": {
+          "rising": "mdi:trending-up",
+          "falling": "mdi:trending-down",
+          "stable": "mdi:trending-neutral"
+        }
+      },
+      "pressure_change_rate": { "default": "mdi:gauge" },
+      "storm_proximity": { "default": "mdi:weather-lightning" },
+      "storm_intensity": { "default": "mdi:weather-lightning-rainy" },
+      "storm_eta": { "default": "mdi:timer-sand" },
+      "lightning_count_30min": { "default": "mdi:flash" },
+      "storm_lightning_distance": { "default": "mdi:flash-alert" },
+      "lightning_distance": { "default": "mdi:flash" },
+      "radar_intensity": { "default": "mdi:radar" },
+      "radar_trend": {
+        "default": "mdi:radar",
+        "state": {
+          "clear": "mdi:weather-sunny",
+          "nearby": "mdi:weather-partly-rainy",
+          "approaching": "mdi:weather-rainy",
+          "arriving": "mdi:weather-pouring",
+          "raining": "mdi:weather-pouring",
+          "intensifying": "mdi:trending-up",
+          "weakening": "mdi:trending-down",
+          "departing": "mdi:weather-partly-cloudy"
+        }
+      },
+      "radar_rain_rate": { "default": "mdi:weather-pouring" },
+      "radar_rain_eta": { "default": "mdi:timer-outline" },
+      "radar_closest_rain": { "default": "mdi:map-marker-distance" },
+      "rain_probability_30min": { "default": "mdi:water-percent" },
+      "rain_probability_60min": { "default": "mdi:water-percent" },
+      "air_quality_trend": {
+        "default": "mdi:air-filter",
+        "state": {
+          "improving_fast": "mdi:trending-down",
+          "improving": "mdi:trending-down",
+          "stable": "mdi:trending-neutral",
+          "deteriorating": "mdi:trending-up",
+          "deteriorating_fast": "mdi:trending-up",
+          "spike": "mdi:alert-decagram"
+        }
+      },
+      "aqi_tracked": { "default": "mdi:air-filter" },
+      "last_update": { "default": "mdi:clock-check-outline" }
+    },
+    "binary_sensor": {
+      "radar_rain_approaching": { "default": "mdi:weather-rainy" }
+    }
+  }
+}

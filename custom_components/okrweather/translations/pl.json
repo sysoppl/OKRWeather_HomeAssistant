@@ -2,59 +2,98 @@
   "config": {
     "step": {
       "user": {
-        "title": "Wybierz stację",
-        "description": "Wybierz stację OKRWeather, którą chcesz monitorować. Każda stacja staje się oddzielnym urządzeniem.",
+        "title": "Połącz z OKRWeather",
+        "description": "Pozostaw klucz API pusty, aby korzystać z darmowych danych pogodowych. Wklej klucz premium, aby odblokować analizy AI (indeks komfortu, analiza radaru, śledzenie burz, alerty ciśnieniowe i przymrozkowe, prognoza solarna, trend jakości powietrza).",
         "data": {
-          "station_id": "Stacja"
+          "api_key": "Klucz API (opcjonalny, premium)",
+          "endpoint": "Adres Appwrite",
+          "project_id": "ID projektu Appwrite"
         }
       },
-      "credentials": {
-        "title": "Klucz API i częstotliwość odświeżania",
-        "description": "Konfigurowanie **{station_name}**.\n\nPozostaw klucz API pusty, aby otrzymywać tylko bezpłatne publiczne dane pogodowe. Wklej klucz API, aby odblokować indeks komfortu, alerty przymrozkowe, prognozy fotowoltaiki i więcej.",
+      "stations": {
+        "title": "Wybierz stacje",
+        "description": "Każda wybrana stacja stanie się osobnym urządzeniem. Stacje można dodawać i usuwać później na stronie integracji.",
         "data": {
-          "api_key": "Klucz API Appwrite (opcjonalny)",
-          "live_interval": "Odświeżanie danych na żywo (sekundy)",
-          "forecast_interval": "Odświeżanie prognoz / funkcji premium (sekundy)"
+          "stations": "Stacje pogodowe"
         }
       },
       "reauth_confirm": {
-        "title": "Wprowadź klucz API ponownie",
-        "description": "Twój klucz API OKRWeather został odrzucony. Wklej nowy klucz, aby przywrócić funkcje premium, lub pozostaw pole puste, aby wrócić do darmowej wersji.",
+        "title": "Wprowadź ponownie klucz API",
+        "description": "Klucz API OKRWeather został odrzucony. Wklej nowy klucz, aby przywrócić analizy AI, lub pozostaw puste pole, aby wrócić do darmowego pakietu.",
         "data": {
-          "api_key": "Klucz API Appwrite"
+          "api_key": "Klucz API"
+        }
+      },
+      "reconfigure": {
+        "title": "Ustawienia backendu OKRWeather",
+        "description": "Zmień adres backendu, projekt lub klucz API. Skonfigurowane stacje zostaną zachowane.",
+        "data": {
+          "api_key": "Klucz API (opcjonalny, premium)",
+          "endpoint": "Adres Appwrite",
+          "project_id": "ID projektu Appwrite"
         }
       }
     },
     "error": {
-      "cannot_connect": "Nie można połączyć się z OKRWeather. Sprawdź połączenie z Internetem.",
-      "invalid_auth": "Klucz API jest nieprawidłowy.",
-      "no_premium": "Ten klucz API nie ma dostępu do tabel premium.",
-      "unknown_station": "Wybrana stacja już nie istnieje.",
-      "unknown": "Nieoczekiwany błąd. Sprawdź dziennik Home Assistant."
+      "cannot_connect": "Nie można połączyć się z backendem OKRWeather. Sprawdź połączenie z internetem.",
+      "invalid_auth": "Backend odrzucił klucz API.",
+      "invalid_project": "Backend odrzucił projekt — sprawdź adres i ID projektu.",
+      "no_station_selected": "Wybierz co najmniej jedną stację.",
+      "unknown": "Nieoczekiwany błąd. Szczegóły w logu Home Assistanta."
     },
     "abort": {
-      "already_configured": "Ta stacja jest już skonfigurowana.",
-      "no_stations": "Serwer nie zwrócił żadnych aktywnych stacji.",
-      "reauth_successful": "Klucz API zaktualizowany."
+      "already_configured": "Ten backend OKRWeather jest już skonfigurowany.",
+      "no_stations": "Backend nie zwrócił żadnych aktywnych stacji.",
+      "reauth_successful": "Klucz API zaktualizowany.",
+      "reconfigure_successful": "Ustawienia backendu zaktualizowane."
+    }
+  },
+  "config_subentries": {
+    "station": {
+      "entry_type": "Stacja pogodowa",
+      "initiate_flow": {
+        "user": "Dodaj stację pogodową"
+      },
+      "step": {
+        "user": {
+          "title": "Dodaj stację pogodową",
+          "description": "Wybierz stację do dodania. Pojawi się jako nowe urządzenie z własną encją pogody i czujnikami.",
+          "data": {
+            "station_id": "Stacja"
+          }
+        }
+      },
+      "error": {
+        "unknown_station": "Wybrana stacja już nie istnieje."
+      },
+      "abort": {
+        "cannot_connect": "Nie można połączyć się z backendem OKRWeather.",
+        "no_stations_left": "Wszystkie dostępne stacje są już skonfigurowane.",
+        "unknown": "Nieoczekiwany błąd. Szczegóły w logu Home Assistanta."
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "Ustawienia OKRWeather",
-        "description": "Zmień klucz API lub częstotliwość odpytywania serwera OKRWeather przez Home Assistant.",
+        "description": "Jak często Home Assistant odpytuje backend oraz w jakim języku mają być teksty porad AI.",
         "data": {
-          "api_key": "Klucz API Appwrite (puste = bez premium)",
-          "live_interval": "Odświeżanie danych na żywo (sekundy, 60–86400)",
-          "forecast_interval": "Odświeżanie prognoz / premium (sekundy, 3600–86400)"
+          "live_interval": "Odświeżanie danych na żywo (sekundy)",
+          "insights_interval": "Odświeżanie analiz AI (sekundy)",
+          "forecast_interval": "Odświeżanie prognozy (sekundy)",
+          "language": "Język porad"
         }
       }
-    },
-    "error": {
-      "cannot_connect": "Nie można połączyć się z OKRWeather.",
-      "invalid_auth": "Klucz API jest nieprawidłowy.",
-      "no_premium": "Ten klucz API nie ma dostępu do tabel premium.",
-      "unknown": "Nieoczekiwany błąd. Sprawdź dziennik Home Assistant."
+    }
+  },
+  "selector": {
+    "language": {
+      "options": {
+        "auto": "Zgodnie z językiem Home Assistanta",
+        "en": "Angielski",
+        "pl": "Polski"
+      }
     }
   },
   "entity": {
@@ -66,47 +105,155 @@
       "pressure": { "name": "Ciśnienie" },
       "wind_speed": { "name": "Prędkość wiatru" },
       "wind_gust": { "name": "Porywy wiatru" },
-      "wind_max_daily_gust": { "name": "Maks. porywy wiatru (dziś)" },
+      "wind_max_daily_gust": { "name": "Maksymalny dzienny poryw wiatru" },
       "wind_bearing": { "name": "Kierunek wiatru" },
       "precipitation_rate": { "name": "Natężenie opadów" },
       "precipitation_today": { "name": "Opady dzisiaj" },
       "uv_index": { "name": "Indeks UV" },
-      "solar_radiation": { "name": "Natężenie promieniowania słonecznego" },
+      "solar_radiation": { "name": "Promieniowanie słoneczne" },
+      "light_level": { "name": "Poziom światła" },
+      "uv_irradiance": { "name": "Natężenie UV" },
       "ground_temperature": { "name": "Temperatura gruntu" },
       "soil_moisture": { "name": "Wilgotność gleby" },
       "snow_depth": { "name": "Pokrywa śnieżna" },
-      "vapor_pressure_deficit": { "name": "Niedobór ciśnienia pary (VPD)" },
-      "pm2_5": { "name": "PM2.5" },
+      "vapor_pressure_deficit": { "name": "Deficyt prężności pary" },
+      "radiation": { "name": "Promieniowanie jonizujące" },
+      "last_update": { "name": "Ostatnia aktualizacja stacji" },
+      "pm2_5": { "name": "PM2,5" },
       "pm10": { "name": "PM10" },
+      "aqi": { "name": "Indeks jakości powietrza" },
       "carbon_monoxide": { "name": "Tlenek węgla" },
       "nitrogen_dioxide": { "name": "Dwutlenek azotu" },
       "ammonia": { "name": "Amoniak" },
-      "active_alerts_count": { "name": "Aktywne ostrzeżenia" },
+      "lightning_distance": { "name": "Odległość wyładowania" },
+      "active_alerts_count": { "name": "Aktywne alerty pogodowe" },
       "comfort_score": { "name": "Indeks komfortu" },
-      "comfort_label": { "name": "Etykieta komfortu" },
+      "comfort_label": {
+        "name": "Poziom komfortu",
+        "state": {
+          "excellent": "Doskonały",
+          "good": "Dobry",
+          "fair": "Umiarkowany",
+          "poor": "Słaby",
+          "very_poor": "Bardzo słaby"
+        }
+      },
       "frost_probability": { "name": "Prawdopodobieństwo przymrozku" },
-      "frost_level": { "name": "Poziom przymrozku" },
-      "frost_window": { "name": "Okno przymrozku" },
-      "solar_total_kwh": { "name": "Prognoza fotowoltaiki (dziś)" },
-      "solar_peak_kw": { "name": "Maks. moc fotowoltaiki" },
-      "solar_efficiency": { "name": "Sprawność paneli" },
-      "solar_production_label": { "name": "Etykieta produkcji energii" },
-      "running_score": { "name": "Warunki do biegania" },
-      "running_label": { "name": "Etykieta biegania" },
-      "cycling_score": { "name": "Warunki do roweru" },
-      "cycling_label": { "name": "Etykieta roweru" },
-      "drying_score": { "name": "Indeks schnięcia prania" },
-      "drying_label": { "name": "Etykieta schnięcia prania" },
-      "drying_estimated_hours": { "name": "Szacowany czas schnięcia" },
-      "outfit_recommendation": { "name": "Rekomendacja ubioru" },
-      "pressure_alert_label": { "name": "Alert ciśnieniowy" },
-      "storm_status": { "name": "Status burzy" },
-      "air_quality_trend": { "name": "Trend jakości powietrza" }
+      "frost_level": {
+        "name": "Poziom przymrozku",
+        "state": {
+          "none": "Brak",
+          "low": "Niski",
+          "moderate": "Umiarkowany",
+          "high": "Wysoki",
+          "very_high": "Bardzo wysoki"
+        }
+      },
+      "solar_total_kwh": { "name": "Prognoza solarna na dziś" },
+      "solar_peak_kw": { "name": "Szczytowa moc solarna" },
+      "solar_efficiency": { "name": "Wydajność paneli" },
+      "solar_production_label": {
+        "name": "Produkcja solarna",
+        "state": {
+          "excellent": "Doskonała",
+          "good": "Dobra",
+          "fair": "Umiarkowana",
+          "poor": "Słaba",
+          "very_poor": "Bardzo słaba"
+        }
+      },
+      "pressure_alert_level": {
+        "name": "Poziom alertu ciśnieniowego",
+        "state": {
+          "none": "Brak",
+          "low": "Niski",
+          "moderate": "Umiarkowany",
+          "high": "Wysoki",
+          "extreme": "Ekstremalny"
+        }
+      },
+      "pressure_trend": {
+        "name": "Trend ciśnienia",
+        "state": {
+          "rising": "Rosnące",
+          "falling": "Spadające",
+          "stable": "Stabilne"
+        }
+      },
+      "pressure_change_rate": { "name": "Tempo zmiany ciśnienia" },
+      "storm_proximity": {
+        "name": "Odległość burzy",
+        "state": {
+          "none": "Brak burzy",
+          "distant": "Odległa",
+          "approaching": "Zbliża się",
+          "nearby": "W pobliżu",
+          "close": "Blisko",
+          "overhead": "Nad głową"
+        }
+      },
+      "storm_intensity": {
+        "name": "Intensywność burzy",
+        "state": {
+          "none": "Brak",
+          "mild": "Łagodna",
+          "moderate": "Umiarkowana",
+          "severe": "Silna",
+          "extreme": "Ekstremalna"
+        }
+      },
+      "storm_eta": { "name": "Czas do burzy" },
+      "lightning_count_30min": { "name": "Wyładowania (30 min)" },
+      "storm_lightning_distance": { "name": "Najbliższe wyładowanie" },
+      "radar_intensity": {
+        "name": "Intensywność opadów (radar)",
+        "state": {
+          "none": "Brak",
+          "light": "Lekkie",
+          "moderate": "Umiarkowane",
+          "heavy": "Silne",
+          "extreme": "Ekstremalne"
+        }
+      },
+      "radar_trend": {
+        "name": "Trend radarowy",
+        "state": {
+          "clear": "Bezchmurnie",
+          "nearby": "Deszcz w pobliżu",
+          "approaching": "Deszcz się zbliża",
+          "arriving": "Deszcz nadchodzi",
+          "raining": "Pada",
+          "intensifying": "Nasila się",
+          "weakening": "Słabnie",
+          "departing": "Oddala się"
+        }
+      },
+      "radar_rain_rate": { "name": "Natężenie deszczu (radar)" },
+      "radar_rain_eta": { "name": "Czas do deszczu" },
+      "radar_closest_rain": { "name": "Najbliższy deszcz" },
+      "rain_probability_30min": { "name": "Szansa deszczu (30 min)" },
+      "rain_probability_60min": { "name": "Szansa deszczu (60 min)" },
+      "air_quality_trend": {
+        "name": "Trend jakości powietrza",
+        "state": {
+          "improving_fast": "Szybka poprawa",
+          "improving": "Poprawa",
+          "stable": "Stabilny",
+          "deteriorating": "Pogorszenie",
+          "deteriorating_fast": "Szybkie pogorszenie",
+          "spike": "Skok zanieczyszczeń"
+        }
+      },
+      "aqi_tracked": { "name": "Monitorowany AQI" }
     },
     "binary_sensor": {
-      "weather_alert_active": { "name": "Aktywny alert pogodowy" },
-      "frost_alert_active": { "name": "Aktywny alert przymrozkowy" },
-      "storm_alert_active": { "name": "Aktywny alert burzowy" }
+      "weather_alert": { "name": "Alert pogodowy" },
+      "station_online": { "name": "Stacja online" },
+      "frost_alert": { "name": "Alert przymrozkowy" },
+      "storm_detected": { "name": "Wykryto burzę" },
+      "radar_raining": { "name": "Opady na radarze" },
+      "radar_rain_approaching": { "name": "Zbliżający się deszcz" },
+      "pressure_alert": { "name": "Alert ciśnieniowy" }
     }
   }
 }

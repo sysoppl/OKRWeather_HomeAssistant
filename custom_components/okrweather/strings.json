@@ -2,59 +2,98 @@
   "config": {
     "step": {
       "user": {
-        "title": "Choose a station",
-        "description": "Pick the OKRWeather station you want to monitor. Each station becomes its own device.",
+        "title": "Connect to OKRWeather",
+        "description": "Leave the API key blank for free public weather data. Paste your premium API key to unlock the AI insights (comfort index, radar analysis, storm tracker, pressure & frost alerts, solar forecast, air-quality trend).",
         "data": {
-          "station_id": "Station"
+          "api_key": "API key (optional, premium)",
+          "endpoint": "Appwrite endpoint",
+          "project_id": "Appwrite project ID"
         }
       },
-      "credentials": {
-        "title": "API key & refresh intervals",
-        "description": "Configuring **{station_name}**.\n\nLeave the API key blank to receive free public weather data only. Paste your premium API key to unlock comfort index, frost alerts, solar forecasts and more.",
+      "stations": {
+        "title": "Choose stations",
+        "description": "Every selected station becomes its own device. You can add or remove stations later from the integration page.",
         "data": {
-          "api_key": "Appwrite API key (optional)",
-          "live_interval": "Live data refresh (seconds)",
-          "forecast_interval": "Forecast / premium refresh (seconds)"
+          "stations": "Weather stations"
         }
       },
       "reauth_confirm": {
         "title": "Re-enter API key",
-        "description": "Your OKRWeather API key was rejected. Paste a new key to restore premium features, or leave blank to fall back to the free tier.",
+        "description": "Your OKRWeather API key was rejected. Paste a new key to restore the AI insights, or leave blank to fall back to the free tier.",
         "data": {
-          "api_key": "Appwrite API key"
+          "api_key": "API key"
+        }
+      },
+      "reconfigure": {
+        "title": "OKRWeather backend settings",
+        "description": "Change the backend endpoint, project or API key. Configured stations are kept.",
+        "data": {
+          "api_key": "API key (optional, premium)",
+          "endpoint": "Appwrite endpoint",
+          "project_id": "Appwrite project ID"
         }
       }
     },
     "error": {
       "cannot_connect": "Could not reach the OKRWeather backend. Check your internet connection.",
-      "invalid_auth": "The API key is invalid.",
-      "no_premium": "This API key does not have access to premium tables.",
-      "unknown_station": "The selected station no longer exists.",
+      "invalid_auth": "The API key was rejected by the backend.",
+      "invalid_project": "The backend rejected the project — check endpoint and project ID.",
+      "no_station_selected": "Select at least one station.",
       "unknown": "Unexpected error. See the Home Assistant log for details."
     },
     "abort": {
-      "already_configured": "This station is already configured.",
+      "already_configured": "This OKRWeather backend is already configured.",
       "no_stations": "The backend returned no active stations.",
-      "reauth_successful": "API key updated."
+      "reauth_successful": "API key updated.",
+      "reconfigure_successful": "Backend settings updated."
+    }
+  },
+  "config_subentries": {
+    "station": {
+      "entry_type": "Weather station",
+      "initiate_flow": {
+        "user": "Add weather station"
+      },
+      "step": {
+        "user": {
+          "title": "Add a weather station",
+          "description": "Pick the station to add. It will show up as a new device with its own weather entity and sensors.",
+          "data": {
+            "station_id": "Station"
+          }
+        }
+      },
+      "error": {
+        "unknown_station": "The selected station no longer exists."
+      },
+      "abort": {
+        "cannot_connect": "Could not reach the OKRWeather backend.",
+        "no_stations_left": "All available stations are already configured.",
+        "unknown": "Unexpected error. See the Home Assistant log for details."
+      }
     }
   },
   "options": {
     "step": {
       "init": {
         "title": "OKRWeather settings",
-        "description": "Change the API key or how often Home Assistant polls the OKRWeather backend.",
+        "description": "How often Home Assistant polls the backend, and which language the AI advisory texts use.",
         "data": {
-          "api_key": "Appwrite API key (leave blank to disable premium)",
-          "live_interval": "Live data refresh (seconds, 60–86400)",
-          "forecast_interval": "Forecast / premium refresh (seconds, 3600–86400)"
+          "live_interval": "Live data refresh (seconds)",
+          "insights_interval": "AI insights refresh (seconds)",
+          "forecast_interval": "Forecast refresh (seconds)",
+          "language": "Advisory language"
         }
       }
-    },
-    "error": {
-      "cannot_connect": "Could not reach the OKRWeather backend.",
-      "invalid_auth": "The API key is invalid.",
-      "no_premium": "This API key does not have access to premium tables.",
-      "unknown": "Unexpected error. See the Home Assistant log for details."
+    }
+  },
+  "selector": {
+    "language": {
+      "options": {
+        "auto": "Follow Home Assistant language",
+        "en": "English",
+        "pl": "Polish"
+      }
     }
   },
   "entity": {
@@ -67,46 +106,154 @@
       "wind_speed": { "name": "Wind speed" },
       "wind_gust": { "name": "Wind gust" },
       "wind_max_daily_gust": { "name": "Max daily wind gust" },
-      "wind_bearing": { "name": "Wind bearing" },
+      "wind_bearing": { "name": "Wind direction" },
       "precipitation_rate": { "name": "Precipitation rate" },
       "precipitation_today": { "name": "Precipitation today" },
       "uv_index": { "name": "UV index" },
       "solar_radiation": { "name": "Solar radiation" },
+      "light_level": { "name": "Light level" },
+      "uv_irradiance": { "name": "UV irradiance" },
       "ground_temperature": { "name": "Ground temperature" },
       "soil_moisture": { "name": "Soil moisture" },
       "snow_depth": { "name": "Snow depth" },
       "vapor_pressure_deficit": { "name": "Vapor pressure deficit" },
+      "radiation": { "name": "Radiation" },
+      "last_update": { "name": "Last station update" },
       "pm2_5": { "name": "PM2.5" },
       "pm10": { "name": "PM10" },
+      "aqi": { "name": "Air quality index" },
       "carbon_monoxide": { "name": "Carbon monoxide" },
       "nitrogen_dioxide": { "name": "Nitrogen dioxide" },
       "ammonia": { "name": "Ammonia" },
+      "lightning_distance": { "name": "Lightning distance" },
       "active_alerts_count": { "name": "Active weather alerts" },
       "comfort_score": { "name": "Comfort index" },
-      "comfort_label": { "name": "Comfort label" },
+      "comfort_label": {
+        "name": "Comfort level",
+        "state": {
+          "excellent": "Excellent",
+          "good": "Good",
+          "fair": "Fair",
+          "poor": "Poor",
+          "very_poor": "Very poor"
+        }
+      },
       "frost_probability": { "name": "Frost probability" },
-      "frost_level": { "name": "Frost level" },
-      "frost_window": { "name": "Frost window" },
-      "solar_total_kwh": { "name": "Solar forecast (today)" },
+      "frost_level": {
+        "name": "Frost level",
+        "state": {
+          "none": "None",
+          "low": "Low",
+          "moderate": "Moderate",
+          "high": "High",
+          "very_high": "Very high"
+        }
+      },
+      "solar_total_kwh": { "name": "Solar forecast today" },
       "solar_peak_kw": { "name": "Solar peak power" },
-      "solar_efficiency": { "name": "Solar panel efficiency" },
-      "solar_production_label": { "name": "Solar production label" },
-      "running_score": { "name": "Running conditions" },
-      "running_label": { "name": "Running label" },
-      "cycling_score": { "name": "Cycling conditions" },
-      "cycling_label": { "name": "Cycling label" },
-      "drying_score": { "name": "Laundry drying score" },
-      "drying_label": { "name": "Laundry drying label" },
-      "drying_estimated_hours": { "name": "Laundry drying time" },
-      "outfit_recommendation": { "name": "Outfit recommendation" },
-      "pressure_alert_label": { "name": "Pressure alert" },
-      "storm_status": { "name": "Storm status" },
-      "air_quality_trend": { "name": "Air quality trend" }
+      "solar_efficiency": { "name": "Solar efficiency" },
+      "solar_production_label": {
+        "name": "Solar production",
+        "state": {
+          "excellent": "Excellent",
+          "good": "Good",
+          "fair": "Fair",
+          "poor": "Poor",
+          "very_poor": "Very poor"
+        }
+      },
+      "pressure_alert_level": {
+        "name": "Pressure alert level",
+        "state": {
+          "none": "None",
+          "low": "Low",
+          "moderate": "Moderate",
+          "high": "High",
+          "extreme": "Extreme"
+        }
+      },
+      "pressure_trend": {
+        "name": "Pressure trend",
+        "state": {
+          "rising": "Rising",
+          "falling": "Falling",
+          "stable": "Stable"
+        }
+      },
+      "pressure_change_rate": { "name": "Pressure change rate" },
+      "storm_proximity": {
+        "name": "Storm proximity",
+        "state": {
+          "none": "No storm",
+          "distant": "Distant",
+          "approaching": "Approaching",
+          "nearby": "Nearby",
+          "close": "Close",
+          "overhead": "Overhead"
+        }
+      },
+      "storm_intensity": {
+        "name": "Storm intensity",
+        "state": {
+          "none": "None",
+          "mild": "Mild",
+          "moderate": "Moderate",
+          "severe": "Severe",
+          "extreme": "Extreme"
+        }
+      },
+      "storm_eta": { "name": "Storm ETA" },
+      "lightning_count_30min": { "name": "Lightning strikes (30 min)" },
+      "storm_lightning_distance": { "name": "Nearest lightning" },
+      "radar_intensity": {
+        "name": "Radar rain intensity",
+        "state": {
+          "none": "None",
+          "light": "Light",
+          "moderate": "Moderate",
+          "heavy": "Heavy",
+          "extreme": "Extreme"
+        }
+      },
+      "radar_trend": {
+        "name": "Radar trend",
+        "state": {
+          "clear": "Clear",
+          "nearby": "Rain nearby",
+          "approaching": "Rain approaching",
+          "arriving": "Rain arriving",
+          "raining": "Raining",
+          "intensifying": "Intensifying",
+          "weakening": "Weakening",
+          "departing": "Departing"
+        }
+      },
+      "radar_rain_rate": { "name": "Radar rain rate" },
+      "radar_rain_eta": { "name": "Rain ETA" },
+      "radar_closest_rain": { "name": "Closest rain" },
+      "rain_probability_30min": { "name": "Rain probability (30 min)" },
+      "rain_probability_60min": { "name": "Rain probability (60 min)" },
+      "air_quality_trend": {
+        "name": "Air quality trend",
+        "state": {
+          "improving_fast": "Rapidly improving",
+          "improving": "Improving",
+          "stable": "Stable",
+          "deteriorating": "Deteriorating",
+          "deteriorating_fast": "Rapidly deteriorating",
+          "spike": "Pollution spike"
+        }
+      },
+      "aqi_tracked": { "name": "Tracked AQI" }
     },
     "binary_sensor": {
-      "weather_alert_active": { "name": "Weather alert active" },
-      "frost_alert_active": { "name": "Frost alert active" },
-      "storm_alert_active": { "name": "Storm alert active" }
+      "weather_alert": { "name": "Weather alert" },
+      "station_online": { "name": "Station online" },
+      "frost_alert": { "name": "Frost alert" },
+      "storm_detected": { "name": "Storm detected" },
+      "radar_raining": { "name": "Radar rain" },
+      "radar_rain_approaching": { "name": "Rain approaching" },
+      "pressure_alert": { "name": "Pressure alert" }
     }
   }
 }
