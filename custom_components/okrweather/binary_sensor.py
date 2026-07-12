@@ -1,12 +1,18 @@
 """Binary sensors for OKRWeather.
 
-Currently exposes a single ``weather_alert_active`` flag plus, when premium is
-enabled, ``frost_alert_active`` and ``storm_alert_active``. Detailed alert
-attributes (severity, title, expiration) ride along as state attributes.
+Per station:
+
+* ``weather_alert`` — an unexpired government alert covers the station area.
+* ``station_online`` — the station delivered data recently (diagnostic).
+
+And, with premium enabled: frost alert, storm detected, radar rain /
+rain-approaching and pressure alert flags driven by the AI tables.
 """
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.components.binary_sensor import (
@@ -14,60 +20,189 @@ from homeassistant.components.binary_sensor import (
     BinarySensorEntity,
     BinarySensorEntityDescription,
 )
+from homeassistant.const import EntityCategory
 
+from .const import (
+    LIVE_STALE_MINUTES,
+    SECTION_FROST,
+    SECTION_PRESSURE,
+    SECTION_RADAR,
+    SECTION_STORM,
+)
 from .entity import OKRWeatherEntity
+from .util import age_minutes, normalize_enum
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
-    from homeassistant.helpers.entity_platform import AddEntitiesCallback
+    from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
-    from .coordinator import (
-        OKRWeatherForecastCoordinator,
-        OKRWeatherLiveCoordinator,
-    )
-    from .data import OKRWeatherConfigEntry, StationInfo
+    from .coordinator import OKRWeatherCoordinator
+    from .data import OKRWeatherConfigEntry, StationConfig
+
+PARALLEL_UPDATES = 0
 
 
-# ── Setup ───────────────────────────────────────────────────────────────────
+@dataclass(frozen=True, kw_only=True)
+class OKRBinarySensorDescription(BinarySensorEntityDescription):
+    """Binary sensor description driven by one section row."""
+
+    section: str
+    is_on_fn: Callable[[dict[str, Any]], bool]
+    attributes_fn: (
+        Callable[[dict[str, Any], Callable[[str], Any]], dict[str, Any]] | None
+    ) = None
+
+
+def _not_none_level(key: str) -> Callable[[dict[str, Any]], bool]:
+    return lambda row: normalize_enum(row.get(key)) not in (None, "none")
+
+
+INSIGHT_BINARY_SENSORS: tuple[OKRBinarySensorDescription, ...] = (
+    OKRBinarySensorDescription(
+        key="frost_alert",
+        translation_key="frost_alert",
+        device_class=BinarySensorDeviceClass.COLD,
+        section=SECTION_FROST,
+        is_on_fn=_not_none_level("frost_level"),
+        attributes_fn=lambda row, loc: {
+            "level": normalize_enum(row.get("frost_level")),
+            "probability": row.get("frost_probability"),
+            "window_start": row.get("frost_window_start"),
+            "window_end": row.get("frost_window_end"),
+            "ice_risk": row.get("ice_risk"),
+            "advisory": loc("advisory"),
+        },
+    ),
+    OKRBinarySensorDescription(
+        key="storm_detected",
+        translation_key="storm_detected",
+        device_class=BinarySensorDeviceClass.SAFETY,
+        section=SECTION_STORM,
+        is_on_fn=lambda row: bool(row.get("storm_detected")),
+        attributes_fn=lambda row, loc: {
+            "proximity": normalize_enum(row.get("proximity_level")),
+            "intensity": normalize_enum(row.get("storm_intensity")),
+            "eta_minutes": row.get("eta_minutes"),
+            "lightning_distance_km": row.get("lightning_distance_km"),
+            "advisory": loc("advisory"),
+        },
+    ),
+    OKRBinarySensorDescription(
+        key="radar_raining",
+        translation_key="radar_raining",
+        device_class=BinarySensorDeviceClass.MOISTURE,
+        section=SECTION_RADAR,
+        is_on_fn=lambda row: bool(row.get("is_raining")),
+        attributes_fn=lambda row, loc: {
+            "intensity": normalize_enum(row.get("intensity")),
+            "rain_rate_mmh": row.get("rain_rate_mmh"),
+            "coverage_percent": row.get("coverage_percent"),
+        },
+    ),
+    OKRBinarySensorDescription(
+        key="radar_rain_approaching",
+        translation_key="radar_rain_approaching",
+        section=SECTION_RADAR,
+        is_on_fn=lambda row: bool(row.get("is_approaching")),
+        attributes_fn=lambda row, loc: {
+            "eta_minutes": row.get("eta_minutes"),
+            "closest_rain_km": row.get("closest_rain_km"),
+            "closest_rain_direction": row.get("closest_rain_direction"),
+        },
+    ),
+    OKRBinarySensorDescription(
+        key="pressure_alert",
+        translation_key="pressure_alert",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        section=SECTION_PRESSURE,
+        is_on_fn=_not_none_level("alert_level"),
+        attributes_fn=lambda row, loc: {
+            "level": normalize_enum(row.get("alert_level")),
+            "risk_score": row.get("risk_score"),
+            "trend": normalize_enum(row.get("trend")),
+            "alert_text": loc("alert_text"),
+        },
+    ),
+)
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: OKRWeatherConfigEntry,
-    async_add_entities: AddEntitiesCallback,
+    async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    """Add binary sensors for every station subentry."""
     runtime = entry.runtime_data
-    station = runtime.station
 
-    entities: list[BinarySensorEntity] = [
-        WeatherAlertBinarySensor(runtime.live_coordinator, station),
-    ]
-    if runtime.premium_enabled:
-        entities.append(FrostAlertBinarySensor(runtime.forecast_coordinator, station))
-        entities.append(StormAlertBinarySensor(runtime.forecast_coordinator, station))
+    for subentry_id, station in runtime.stations.items():
+        entities: list[BinarySensorEntity] = [
+            OKRWeatherAlertBinarySensor(runtime.live_coordinator, station),
+            OKRStationOnlineBinarySensor(runtime.live_coordinator, station),
+        ]
+        if runtime.premium_enabled:
+            entities.extend(
+                OKRInsightBinarySensor(runtime.insights_coordinator, station, desc)
+                for desc in INSIGHT_BINARY_SENSORS
+            )
+        async_add_entities(entities, config_subentry_id=subentry_id)
 
-    async_add_entities(entities)
+
+# ── Entities ─────────────────────────────────────────────────────────────────
 
 
-# ── Entities ────────────────────────────────────────────────────────────────
+class OKRInsightBinarySensor(OKRWeatherEntity, BinarySensorEntity):
+    """Binary sensor driven by one premium AI section."""
+
+    entity_description: OKRBinarySensorDescription
+
+    def __init__(
+        self,
+        coordinator: OKRWeatherCoordinator,
+        station: StationConfig,
+        description: OKRBinarySensorDescription,
+    ) -> None:
+        super().__init__(coordinator, station, description)
+
+    @property
+    def _row(self) -> dict[str, Any] | None:
+        row = self.section_row(self.entity_description.section)
+        return row if isinstance(row, dict) else None
+
+    @property
+    def is_on(self) -> bool | None:
+        if (row := self._row) is None:
+            return None
+        return self.entity_description.is_on_fn(row)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        attributes_fn = self.entity_description.attributes_fn
+        if attributes_fn is None or (row := self._row) is None:
+            return None
+        attrs = attributes_fn(row, lambda base: self.localized(row, base))
+        return {k: v for k, v in attrs.items() if v is not None} or None
 
 
-class WeatherAlertBinarySensor(OKRWeatherEntity, BinarySensorEntity):
-    """True when at least one weather alert is currently active."""
+class OKRWeatherAlertBinarySensor(OKRWeatherEntity, BinarySensorEntity):
+    """On when at least one unexpired alert covers the station's area."""
 
     entity_description = BinarySensorEntityDescription(
-        key="weather_alert_active",
-        translation_key="weather_alert_active",
+        key="weather_alert",
+        translation_key="weather_alert",
         device_class=BinarySensorDeviceClass.SAFETY,
     )
 
     def __init__(
         self,
-        coordinator: OKRWeatherLiveCoordinator,
-        station: StationInfo,
+        coordinator: OKRWeatherCoordinator,
+        station: StationConfig,
     ) -> None:
         super().__init__(coordinator, station)
         self._attr_unique_id = f"{station.appwrite_id}_weather_alert_active"
+
+    def _alerts(self) -> list[dict[str, Any]]:
+        # Pre-filtered per station by the live coordinator.
+        return self.section_row("alerts") or []
 
     @property
     def is_on(self) -> bool:
@@ -89,109 +224,31 @@ class WeatherAlertBinarySensor(OKRWeatherEntity, BinarySensorEntity):
             "description": first.get("description"),
         }
 
-    def _alerts(self) -> list[dict[str, Any]]:
-        data = self.coordinator.data or {}
-        return data.get("alerts") or []
 
-
-class FrostAlertBinarySensor(OKRWeatherEntity, BinarySensorEntity):
-    """True when the latest frost row reports any frost level other than 'none'."""
+class OKRStationOnlineBinarySensor(OKRWeatherEntity, BinarySensorEntity):
+    """On when the station delivered a weather reading recently."""
 
     entity_description = BinarySensorEntityDescription(
-        key="frost_alert_active",
-        translation_key="frost_alert_active",
-        device_class=BinarySensorDeviceClass.COLD,
+        key="station_online",
+        translation_key="station_online",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
     )
 
     def __init__(
         self,
-        coordinator: OKRWeatherForecastCoordinator,
-        station: StationInfo,
+        coordinator: OKRWeatherCoordinator,
+        station: StationConfig,
     ) -> None:
         super().__init__(coordinator, station)
-        self._attr_unique_id = f"{station.appwrite_id}_frost_alert_active"
+        self._attr_unique_id = f"{station.appwrite_id}_station_online"
 
     @property
-    def available(self) -> bool:
-        if not super().available:
+    def is_on(self) -> bool | None:
+        row = self.section_row("weather")
+        if not isinstance(row, dict):
             return False
-        runtime = self.coordinator.config_entry.runtime_data
-        return "frost_alert" not in runtime.premium_tables_blocked
-
-    @property
-    def is_on(self) -> bool:
-        row = self._row()
-        if not row:
-            return False
-        level = (row.get("frost_level") or "").lower()
-        return level not in ("", "none", "no_frost")
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        row = self._row()
-        if not row:
-            return {}
-        return {
-            "level": row.get("frost_level"),
-            "probability": row.get("frost_probability"),
-            "window_start": row.get("frost_window_start"),
-            "window_end": row.get("frost_window_end"),
-            "advisory": row.get("advisory_pl") or row.get("advisory_en"),
-            "ice_risk": row.get("ice_risk"),
-        }
-
-    def _row(self) -> dict[str, Any] | None:
-        data = self.coordinator.data or {}
-        return data.get("frost_alert")
-
-
-class StormAlertBinarySensor(OKRWeatherEntity, BinarySensorEntity):
-    """True when the storm tracker reports a storm in range."""
-
-    entity_description = BinarySensorEntityDescription(
-        key="storm_alert_active",
-        translation_key="storm_alert_active",
-        device_class=BinarySensorDeviceClass.PROBLEM,
-    )
-
-    def __init__(
-        self,
-        coordinator: OKRWeatherForecastCoordinator,
-        station: StationInfo,
-    ) -> None:
-        super().__init__(coordinator, station)
-        self._attr_unique_id = f"{station.appwrite_id}_storm_alert_active"
-
-    @property
-    def available(self) -> bool:
-        if not super().available:
-            return False
-        runtime = self.coordinator.config_entry.runtime_data
-        return "storm_tracker" not in runtime.premium_tables_blocked
-
-    @property
-    def is_on(self) -> bool:
-        row = self._row()
-        if not row:
-            return False
-        # The storm-tracker row format isn't strictly known; treat any value
-        # other than null/'none'/'clear' as "storm active".
-        status = (row.get("status") or row.get("storm_level") or "").lower()
-        return status not in ("", "none", "clear", "no_storm")
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        row = self._row()
-        if not row:
-            return {}
-        # Pass through everything except Appwrite metadata so the user can
-        # surface whichever columns the backend exposes.
-        return {
-            k: v
-            for k, v in row.items()
-            if not k.startswith("$") and k != "station"
-        }
-
-    def _row(self) -> dict[str, Any] | None:
-        data = self.coordinator.data or {}
-        return data.get("storm_tracker")
+        age = age_minutes(row.get("measurementDate") or row.get("$createdAt"))
+        if age is None:
+            return None
+        return age <= LIVE_STALE_MINUTES
