@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING
 
+from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigSubentry
 from homeassistant.const import Platform
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.loader import async_get_integration
 
 from .api import OKRWeatherApiClient
 from .config_flow import station_subentry_data
@@ -35,6 +39,8 @@ from .const import (
     DEFAULT_LIVE_INTERVAL,
     DEFAULT_PROJECT_ID,
     DOMAIN,
+    FRONTEND_CARD_FILENAME,
+    FRONTEND_URL_BASE,
     LOGGER,
     MAX_FORECAST_INTERVAL,
     MAX_LIVE_INTERVAL,
@@ -51,6 +57,7 @@ from .data import OKRWeatherData, StationConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
+    from homeassistant.helpers.typing import ConfigType
 
     from .data import OKRWeatherConfigEntry
 
@@ -60,6 +67,30 @@ PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.BINARY_SENSOR,
 ]
+
+
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Serve the bundled Lovelace card and load it on every dashboard.
+
+    Runs once per Home Assistant start — no manual resource registration
+    needed. The manifest version drives the ?v= query parameter, so every
+    release cache-busts browsers without a separately maintained number.
+    """
+    await hass.http.async_register_static_paths(
+        [
+            StaticPathConfig(
+                FRONTEND_URL_BASE,
+                str(Path(__file__).parent / "frontend"),
+                cache_headers=True,
+            )
+        ]
+    )
+    integration = await async_get_integration(hass, DOMAIN)
+    add_extra_js_url(
+        hass,
+        f"{FRONTEND_URL_BASE}/{FRONTEND_CARD_FILENAME}?v={integration.version}",
+    )
+    return True
 
 
 async def async_setup_entry(

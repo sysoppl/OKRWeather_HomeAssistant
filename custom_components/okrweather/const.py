@@ -10,6 +10,12 @@ LOGGER: Logger = getLogger(__package__)
 DOMAIN: Final = "okrweather"
 MANUFACTURER: Final = "OKRWeather"
 
+# ── Bundled Lovelace card ────────────────────────────────────────────────────
+# Served from custom_components/okrweather/frontend/ and auto-registered on
+# every dashboard. The manifest version cache-busts browsers on release.
+FRONTEND_URL_BASE: Final = f"/{DOMAIN}-frontend"
+FRONTEND_CARD_FILENAME: Final = "okrweather-card.js"
+
 ATTRIBUTION: Final = "Data from Pogoda OKR (pogodaokr.pl)"
 
 # ── Appwrite endpoint ────────────────────────────────────────────────────────

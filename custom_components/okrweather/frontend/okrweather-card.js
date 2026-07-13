@@ -1,0 +1,1699 @@
+/**
+ * OKRWeather Card — Lovelace widget for the OKRWeather (Pogoda OKR) integration.
+ *
+ * Served automatically by the integration (no manual resource registration).
+ * Pick a station's weather entity; every other entity (live sensors, air
+ * quality, alerts, premium AI insights) is resolved through the device
+ * registry by translation key, so renamed or non-English entity ids work.
+ *
+ * Design: a precise weather instrument that breathes with the sky — the
+ * card's accent palette follows the live condition (sun, rain, storm, snow,
+ * night) as a translucent wash over the active HA theme, so it harmonises
+ * with any light or dark dashboard.
+ *
+ * Configurable via the visual editor or YAML:
+ *
+ *   type: custom:okrweather-card
+ *   entity: weather.gogolin_rondo
+ *   name: Gogolin                # optional title override
+ *   show_current: true
+ *   show_details: true
+ *   show_air_quality: true
+ *   show_alerts: true
+ *   show_forecast: true
+ *   forecast_type: daily         # daily | hourly | twice_daily
+ *   forecast_slots: 5            # 3..8
+ *   insights:                    # premium sections to show (default: all)
+ *     - comfort
+ *     - radar
+ *     - storm
+ *     - pressure
+ *     - frost
+ *     - solar
+ *     - air_trend
+ *   compact: false               # hide advisory texts and section captions
+ */
+
+const CARD_TYPE = "okrweather-card";
+const INTEGRATION_DOMAIN = "okrweather";
+
+const ALL_INSIGHTS = [
+  "comfort",
+  "radar",
+  "storm",
+  "pressure",
+  "frost",
+  "solar",
+  "air_trend",
+];
+
+const DEFAULT_CONFIG = {
+  name: "",
+  show_current: true,
+  show_details: true,
+  show_air_quality: true,
+  show_alerts: true,
+  show_forecast: true,
+  forecast_type: "daily",
+  forecast_slots: 5,
+  insights: ALL_INSIGHTS,
+  compact: false,
+};
+
+const CONDITION_ICONS = {
+  "clear-night": "mdi:weather-night",
+  cloudy: "mdi:weather-cloudy",
+  exceptional: "mdi:alert-circle-outline",
+  fog: "mdi:weather-fog",
+  hail: "mdi:weather-hail",
+  lightning: "mdi:weather-lightning",
+  "lightning-rainy": "mdi:weather-lightning-rainy",
+  partlycloudy: "mdi:weather-partly-cloudy",
+  pouring: "mdi:weather-pouring",
+  rainy: "mdi:weather-rainy",
+  snowy: "mdi:weather-snowy",
+  "snowy-rainy": "mdi:weather-snowy-rainy",
+  sunny: "mdi:weather-sunny",
+  windy: "mdi:weather-windy",
+  "windy-variant": "mdi:weather-windy-variant",
+};
+
+/**
+ * Per-condition ambience: `accent` colors the hero icon and small accents,
+ * `washA`/`washB` are blended (via color-mix, at low opacity) into the card
+ * background so the palette adapts to whatever theme is active.
+ */
+const CONDITION_THEMES = {
+  sunny: { accent: "#eda232", washA: "#ffc55c", washB: "#4a9fd8" },
+  "clear-night": { accent: "#8fa7d9", washA: "#33406e", washB: "#141c38" },
+  partlycloudy: { accent: "#e0a844", washA: "#9cc0dd", washB: "#c2cdd6" },
+  cloudy: { accent: "#8fa1ac", washA: "#9fb0bb", washB: "#7c8f9b" },
+  fog: { accent: "#a3aab9", washA: "#aeb4c2", washB: "#8d93a5" },
+  rainy: { accent: "#5b8db8", washA: "#5b8db8", washB: "#3c6a94" },
+  pouring: { accent: "#417099", washA: "#417099", washB: "#2b5578" },
+  lightning: { accent: "#6f7cc3", washA: "#4a548f", washB: "#23294f" },
+  "lightning-rainy": { accent: "#6f7cc3", washA: "#3f4880", washB: "#1d2342" },
+  hail: { accent: "#6fa5c8", washA: "#87b6d4", washB: "#5b86a8" },
+  snowy: { accent: "#79b0d4", washA: "#a8d0e8", washB: "#6f9fc0" },
+  "snowy-rainy": { accent: "#6ba0c6", washA: "#93bdd8", washB: "#5e8cae" },
+  windy: { accent: "#69a6a2", washA: "#84b8b4", washB: "#5b8d89" },
+  "windy-variant": { accent: "#69a6a2", washA: "#84b8b4", washB: "#5b8d89" },
+  exceptional: { accent: "#d98a3d", washA: "#d98a3d", washB: "#a85f28" },
+};
+const DEFAULT_THEME = CONDITION_THEMES.cloudy;
+
+const RAIN_COLOR = "#4f86ba";
+
+/** severity rank → status color; -1 = neutral */
+const STATUS_COLORS = {
+  "-1": "#8a95a1",
+  0: "#3f9d63",
+  1: "#7cab48",
+  2: "#d9a23c",
+  3: "#e07b39",
+  4: "#d75449",
+};
+
+/**
+ * Severity rank per enum sensor (keyed by translation key), matching the
+ * backend orderings in const.py. Kept per-enum on purpose: "nearby" means
+ * rank 3 for storm proximity but rank 2 for the radar trend, so a shared
+ * flat map would silently collide. Unknown states fall back to neutral.
+ */
+const ENUM_RANKS = {
+  comfort_label: { excellent: 0, good: 1, fair: 2, poor: 3, very_poor: 4 },
+  solar_production_label: {
+    excellent: 0, good: 1, fair: 2, poor: 3, very_poor: 4,
+  },
+  frost_level: { none: -1, low: 1, moderate: 2, high: 3, very_high: 4 },
+  pressure_alert_level: {
+    none: -1, low: 1, moderate: 2, high: 3, extreme: 4,
+  },
+  pressure_trend: { rising: -1, falling: -1, stable: -1 },
+  storm_proximity: {
+    none: -1, distant: 1, approaching: 2, nearby: 3, close: 4, overhead: 4,
+  },
+  storm_intensity: { none: -1, mild: 1, moderate: 2, severe: 3, extreme: 4 },
+  radar_intensity: { none: -1, light: 1, moderate: 2, heavy: 3, extreme: 4 },
+  radar_trend: {
+    clear: -1, departing: 1, weakening: 1, nearby: 2, approaching: 3,
+    arriving: 4, raining: 4, intensifying: 4,
+  },
+  air_quality_trend: {
+    improving_fast: 0, improving: 1, stable: -1,
+    deteriorating: 3, deteriorating_fast: 4, spike: 4,
+  },
+};
+
+/** EPA AQI bands: [upper bound, color] — track segments + marker color. */
+const AQI_BANDS = [
+  [50, "#3f9d63"],
+  [100, "#d9a23c"],
+  [150, "#e07b39"],
+  [200, "#d75449"],
+  [300, "#8e5aa8"],
+  [400, "#7d3a4a"],
+];
+
+const STRINGS = {
+  en: {
+    details: "Details",
+    air_quality: "Air quality",
+    alerts: "Weather alerts",
+    forecast: "Forecast",
+    insights: "AI insights",
+    comfort: "Comfort",
+    radar: "Rain radar",
+    storm: "Storm",
+    pressure: "Pressure",
+    frost: "Frost",
+    solar: "Solar",
+    air_trend: "Air trend",
+    feels_like: "feels like",
+    humidity: "Humidity",
+    wind: "Wind",
+    gust: "Gust",
+    rain_rate: "Rain rate",
+    rain_today: "Rain today",
+    uv: "UV index",
+    solar_rad: "Solar rad.",
+    dew_point: "Dew point",
+    eta: "ETA",
+    closest_rain: "Closest rain",
+    rain_30: "Rain 30 min",
+    rain_60: "Rain 60 min",
+    lightning_30: "Strikes 30 min",
+    distance: "Distance",
+    trend: "Trend",
+    window: "Window",
+    peak: "Peak",
+    efficiency: "Efficiency",
+    probability: "Probability",
+    change_rate: "Change rate",
+    category: "Category",
+    alert: "alert",
+    alerts_n: "alerts",
+    station_offline: "Station offline — data may be stale",
+    no_entity: "Entity not found",
+    min: "min",
+  },
+  pl: {
+    details: "Szczegóły",
+    air_quality: "Jakość powietrza",
+    alerts: "Alerty pogodowe",
+    forecast: "Prognoza",
+    insights: "Analizy AI",
+    comfort: "Komfort",
+    radar: "Radar opadów",
+    storm: "Burza",
+    pressure: "Ciśnienie",
+    frost: "Przymrozek",
+    solar: "Solar",
+    air_trend: "Trend powietrza",
+    feels_like: "odczuwalna",
+    humidity: "Wilgotność",
+    wind: "Wiatr",
+    gust: "Porywy",
+    rain_rate: "Natężenie opadu",
+    rain_today: "Deszcz dziś",
+    uv: "Indeks UV",
+    solar_rad: "Nasłonecznienie",
+    dew_point: "Punkt rosy",
+    eta: "ETA",
+    closest_rain: "Najbliższy deszcz",
+    rain_30: "Deszcz 30 min",
+    rain_60: "Deszcz 60 min",
+    lightning_30: "Wyładowania 30 min",
+    distance: "Odległość",
+    trend: "Trend",
+    window: "Okno",
+    peak: "Szczyt",
+    efficiency: "Wydajność",
+    probability: "Prawdopodobieństwo",
+    change_rate: "Tempo zmian",
+    category: "Kategoria",
+    alert: "alert",
+    alerts_n: "alerty(-ów)",
+    station_offline: "Stacja offline — dane mogą być nieaktualne",
+    no_entity: "Nie znaleziono encji",
+    min: "min",
+  },
+};
+
+const CARDINALS = [
+  "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE",
+  "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW",
+];
+
+const esc = (value) =>
+  value == null
+    ? ""
+    : String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+
+const bearingToCardinal = (deg) => {
+  if (typeof deg !== "number" || Number.isNaN(deg)) return null;
+  return CARDINALS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
+};
+
+const aqiColor = (aqi) => {
+  if (aqi == null || Number.isNaN(aqi)) return STATUS_COLORS["-1"];
+  for (const [bound, color] of AQI_BANDS) {
+    if (aqi <= bound) return color;
+  }
+  return AQI_BANDS[AQI_BANDS.length - 1][1];
+};
+
+const comfortColor = (score) => {
+  if (score == null || Number.isNaN(score)) return STATUS_COLORS["-1"];
+  if (score >= 80) return STATUS_COLORS[0];
+  if (score >= 60) return STATUS_COLORS[1];
+  if (score >= 40) return STATUS_COLORS[2];
+  if (score >= 20) return STATUS_COLORS[3];
+  return STATUS_COLORS[4];
+};
+
+/** Map a temperature (°C-ish range) onto a cold-blue → hot-orange hue. */
+const tempColor = (t) => {
+  const clamped = Math.max(-10, Math.min(32, Number(t)));
+  const hue = 215 - ((clamped + 10) / 42) * 195; // 215 (cold) → 20 (hot)
+  return `hsl(${Math.round(hue)} 62% 52%)`;
+};
+
+const rankColor = (enumKey, state) =>
+  STATUS_COLORS[String(ENUM_RANKS[enumKey]?.[state] ?? -1)];
+
+const isKnown = (stateObj) =>
+  stateObj && stateObj.state !== "unknown" && stateObj.state !== "unavailable";
+
+class OKRWeatherCard extends HTMLElement {
+  constructor() {
+    super();
+    this.attachShadow({ mode: "open" });
+    this._forecast = undefined;
+    this._forecastKey = null;
+    this._forecastDataKey = null;
+    this._forecastFailures = 0;
+    this._forecastRetry = undefined;
+    this._unsubPromise = undefined;
+    this._animatedOnce = false;
+
+    // Static skeleton: the stylesheet is parsed once; renders only swap the
+    // markup below it. One delegated listener replaces per-element handlers.
+    const style = document.createElement("style");
+    style.textContent = OKRWeatherCard.styles;
+    this._root = document.createElement("div");
+    this.shadowRoot.append(style, this._root);
+    this.shadowRoot.addEventListener("click", (ev) => {
+      const target = ev
+        .composedPath()
+        .find((el) => el instanceof HTMLElement && el.dataset?.entity);
+      if (!target) return;
+      ev.stopPropagation();
+      this.dispatchEvent(
+        new CustomEvent("hass-more-info", {
+          bubbles: true,
+          composed: true,
+          detail: { entityId: target.dataset.entity },
+        })
+      );
+    });
+  }
+
+  static async getConfigElement() {
+    await loadHaForm();
+    return document.createElement("okrweather-card-editor");
+  }
+
+  static getStubConfig(hass) {
+    const ids = Object.keys(hass.states).filter((id) =>
+      id.startsWith("weather.")
+    );
+    const okr = ids.find(
+      (id) => hass.entities?.[id]?.platform === INTEGRATION_DOMAIN
+    );
+    return { entity: okr || ids[0] || "" };
+  }
+
+  setConfig(config) {
+    if (!config || !config.entity) {
+      throw new Error(
+        'okrweather-card: set "entity" to the weather entity of an OKRWeather station'
+      );
+    }
+    this._config = { ...DEFAULT_CONFIG, ...config };
+    if (!Array.isArray(this._config.insights)) {
+      this._config.insights = ALL_INSIGHTS;
+    }
+    this._fingerprint = undefined;
+    this._entityMap = undefined;
+    if (this._hass) {
+      this._manageForecast();
+      this._render();
+    }
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    const fp = this._computeFingerprint();
+    if (fp !== this._fingerprint) {
+      this._fingerprint = fp;
+      this._render();
+    }
+    this._manageForecast();
+  }
+
+  get hass() {
+    return this._hass;
+  }
+
+  connectedCallback() {
+    this._forecastKey = null; // force a resubscribe
+    if (this._hass && this._config) {
+      this._manageForecast();
+      this._render();
+    }
+  }
+
+  disconnectedCallback() {
+    this._dropForecastSub();
+    this._forecastKey = null;
+  }
+
+  getCardSize() {
+    if (!this._config) return 4;
+    let size = 2;
+    if (this._config.show_details) size += 2;
+    if (this._config.show_forecast) size += 2;
+    if (this._config.insights?.length) size += 2;
+    return size;
+  }
+
+  getGridOptions() {
+    return { columns: 12, min_columns: 6 };
+  }
+
+  // ── Entity resolution ──────────────────────────────────────────────────
+
+  /** translation_key → entity_id for every entity on the station's device. */
+  _map() {
+    const hass = this._hass;
+    if (!hass) return {};
+    if (this._entityMap && this._entitiesRef === hass.entities) {
+      return this._entityMap;
+    }
+    const map = {};
+    const deviceId = hass.entities?.[this._config.entity]?.device_id;
+    if (deviceId) {
+      for (const [id, reg] of Object.entries(hass.entities)) {
+        if (
+          reg.device_id === deviceId &&
+          reg.platform === INTEGRATION_DOMAIN &&
+          reg.translation_key
+        ) {
+          map[reg.translation_key] = id;
+        }
+      }
+    }
+    this._entityMap = map;
+    this._entitiesRef = hass.entities;
+    return map;
+  }
+
+  _stateObj(key) {
+    const id = this._map()[key];
+    return id ? this._hass.states[id] : undefined;
+  }
+
+  /** Formatted state (translated, with unit) or null when missing/unknown. */
+  _fmt(key) {
+    const stateObj = this._stateObj(key);
+    if (!isKnown(stateObj)) return null;
+    try {
+      return this._hass.formatEntityState(stateObj);
+    } catch (e) {
+      return stateObj.state;
+    }
+  }
+
+  _num(key) {
+    const stateObj = this._stateObj(key);
+    if (!isKnown(stateObj)) return null;
+    const value = Number(stateObj.state);
+    return Number.isNaN(value) ? null : value;
+  }
+
+  _attr(key, attr) {
+    const stateObj = this._stateObj(key);
+    return isKnown(stateObj) ? stateObj.attributes[attr] : undefined;
+  }
+
+  _computeFingerprint() {
+    if (!this._hass || !this._config) return "";
+    const parts = [this._hass.language, this._config.entity];
+    const weather = this._hass.states[this._config.entity];
+    parts.push(weather ? weather.last_updated : "-");
+    for (const id of Object.values(this._map())) {
+      const stateObj = this._hass.states[id];
+      parts.push(stateObj ? stateObj.last_updated : "-");
+    }
+    return parts.join("|");
+  }
+
+  // ── Forecast subscription ──────────────────────────────────────────────
+
+  async _manageForecast() {
+    if (!this._hass || !this._config) return;
+    const want = this._config.show_forecast && this.isConnected;
+    const key = want
+      ? `${this._config.entity}|${this._config.forecast_type}`
+      : null;
+    if (key === this._forecastKey) return;
+    this._dropForecastSub();
+    this._forecastKey = key;
+    if (!key) {
+      this._forecast = undefined;
+      this._forecastDataKey = null;
+      return;
+    }
+    // Keep already-fetched data across a reattach (tab switch, conditional
+    // card) to the same entity/type — only a genuinely different
+    // subscription starts from a blank forecast.
+    if (this._forecastDataKey !== key) {
+      this._forecast = undefined;
+      this._forecastDataKey = key;
+      this._forecastFailures = 0;
+    }
+    const attempt = this._hass.connection.subscribeMessage(
+      (event) => {
+        this._forecastFailures = 0;
+        this._forecast = event.forecast;
+        this._forecastDataKey = key;
+        this._render();
+      },
+      {
+        type: "weather/subscribe_forecast",
+        forecast_type: this._config.forecast_type,
+        entity_id: this._config.entity,
+      }
+    );
+    this._unsubPromise = attempt;
+    try {
+      await attempt;
+    } catch (e) {
+      if (this._forecastKey !== key) return; // superseded meanwhile
+      this._unsubPromise = undefined;
+      this._forecastKey = null; // allow another attempt
+      this._forecastFailures += 1;
+      if (this._forecastFailures <= 5) {
+        // Transient (reconnect, HA restart) — retry with growing backoff.
+        clearTimeout(this._forecastRetry);
+        this._forecastRetry = setTimeout(
+          () => this._manageForecast(),
+          Math.min(5000 * 2 ** (this._forecastFailures - 1), 60000)
+        );
+      } else {
+        // Persistent (e.g. unsupported forecast_type) — stop asking.
+        this._forecastKey = key;
+        this._forecast = [];
+      }
+    }
+  }
+
+  _dropForecastSub() {
+    clearTimeout(this._forecastRetry);
+    if (this._unsubPromise) {
+      this._unsubPromise
+        .then((unsub) => unsub())
+        .catch(() => undefined);
+      this._unsubPromise = undefined;
+    }
+  }
+
+  // ── Rendering ──────────────────────────────────────────────────────────
+
+  _t(key) {
+    const lang = (this._hass?.language || "en").startsWith("pl") ? "pl" : "en";
+    return STRINGS[lang][key] ?? STRINGS.en[key] ?? key;
+  }
+
+  _formatNumber(value, digits = 1) {
+    const lang = this._hass?.language || "en";
+    try {
+      return new Intl.NumberFormat(lang, {
+        maximumFractionDigits: digits,
+      }).format(value);
+    } catch (e) {
+      return String(value);
+    }
+  }
+
+  _render() {
+    if (!this._hass || !this._config || !this.shadowRoot) return;
+    const config = this._config;
+    const weather = this._hass.states[config.entity];
+    const theme =
+      (weather && CONDITION_THEMES[weather.state]) || DEFAULT_THEME;
+
+    let body;
+    if (!weather) {
+      body = `<div class="warning">${this._t("no_entity")}: ${esc(
+        config.entity
+      )}</div>`;
+    } else {
+      const sections = [];
+      if (config.show_alerts) sections.push(this._renderAlerts());
+      if (config.show_current) sections.push(this._renderHeader(weather));
+      sections.push(this._renderOffline());
+      if (config.show_details) sections.push(this._renderDetails());
+      if (config.show_air_quality) sections.push(this._renderAir());
+      if (config.insights?.length) sections.push(this._renderInsights());
+      if (config.show_forecast) sections.push(this._renderForecast(weather));
+      body = sections
+        .filter(Boolean)
+        .map((html, i) => `<div class="sec" style="--i:${i}">${html}</div>`)
+        .join("");
+    }
+
+    const animate = !this._animatedOnce;
+    this._animatedOnce = true;
+
+    this._root.innerHTML = `
+      <ha-card class="${animate ? "animate" : ""}"
+        style="--okr-accent:${theme.accent};--okr-wash-a:${theme.washA};--okr-wash-b:${theme.washB};--okr-rain:${RAIN_COLOR}">
+        <div class="wash"></div>
+        <div class="content">${body}</div>
+      </ha-card>
+    `;
+  }
+
+  _heroTemperature(weather) {
+    const tempObj = this._stateObj("temperature");
+    let value = null;
+    let unit = "°C";
+    if (isKnown(tempObj) && !Number.isNaN(Number(tempObj.state))) {
+      value = Number(tempObj.state);
+      unit = tempObj.attributes.unit_of_measurement || unit;
+    } else if (weather.attributes.temperature != null) {
+      value = weather.attributes.temperature;
+      unit = weather.attributes.temperature_unit || unit;
+    }
+    return value == null
+      ? null
+      : { value: this._formatNumber(value, 1), unit };
+  }
+
+  _renderHeader(weather) {
+    const config = this._config;
+    const icon = CONDITION_ICONS[weather.state] || "mdi:weather-cloudy";
+    const name =
+      config.name || weather.attributes.friendly_name || config.entity;
+
+    const hero = this._heroTemperature(weather);
+    let condition;
+    try {
+      condition = this._hass.formatEntityState(weather);
+    } catch (e) {
+      condition = weather.state;
+    }
+    const feels = this._fmt("apparent_temperature");
+
+    // Today's span, once the daily forecast has arrived.
+    let range = "";
+    if (
+      this._config.forecast_type === "daily" &&
+      Array.isArray(this._forecast) &&
+      this._forecast.length
+    ) {
+      const today = this._forecast[0];
+      if (today.temperature != null && today.templow != null) {
+        range = `<span class="range">
+            <span class="hi">↑${Math.round(today.temperature)}°</span>
+            <span class="lo">↓${Math.round(today.templow)}°</span>
+          </span>`;
+      }
+    }
+
+    return `
+      <div class="header" data-entity="${esc(this._config.entity)}">
+        <div class="header-left">
+          <div class="overline">${esc(name)}</div>
+          <div class="temp">
+            ${
+              hero
+                ? `<span class="temp-value">${esc(hero.value)}</span><span class="temp-unit">${esc(hero.unit)}</span>`
+                : `<span class="temp-value">—</span>`
+            }
+          </div>
+          <div class="cond">
+            <span>${esc(condition)}</span>
+            ${feels ? `<span class="dot">·</span><span>${this._t("feels_like")} ${esc(feels)}</span>` : ""}
+            ${range}
+          </div>
+        </div>
+        <div class="header-icon"><ha-icon icon="${icon}"></ha-icon></div>
+      </div>
+    `;
+  }
+
+  _renderOffline() {
+    const online = this._stateObj("station_online");
+    if (!isKnown(online) || online.state !== "off") return "";
+    return `
+      <div class="offline">
+        <ha-icon icon="mdi:lan-disconnect"></ha-icon>
+        ${this._t("station_offline")}
+      </div>
+    `;
+  }
+
+  _sectionTitle(key) {
+    if (this._config.compact) return "";
+    return `<div class="section-title"><span>${this._t(key)}</span></div>`;
+  }
+
+  _renderDetails() {
+    const windDir = bearingToCardinal(this._num("wind_bearing"));
+    const wind = this._fmt("wind_speed");
+    const items = [
+      [
+        "wind_speed",
+        this._t("wind"),
+        wind ? `${wind}${windDir ? ` ${windDir}` : ""}` : null,
+      ],
+      ["wind_gust", this._t("gust"), this._fmt("wind_gust")],
+      ["humidity", this._t("humidity"), this._fmt("humidity")],
+      ["pressure", this._t("pressure"), this._fmt("pressure")],
+      ["precipitation_rate", this._t("rain_rate"), this._fmt("precipitation_rate")],
+      ["precipitation_today", this._t("rain_today"), this._fmt("precipitation_today")],
+      ["uv_index", this._t("uv"), this._fmt("uv_index")],
+      ["solar_radiation", this._t("solar_rad"), this._fmt("solar_radiation")],
+      ["dew_point", this._t("dew_point"), this._fmt("dew_point")],
+    ].filter(([, , value]) => value != null);
+
+    if (!items.length) return "";
+    const map = this._map();
+    return `
+      ${this._sectionTitle("details")}
+      <div class="details">
+        ${items
+          .map(
+            ([key, label, value]) => `
+          <div class="detail" data-entity="${esc(map[key] || "")}">
+            <span class="detail-value">${esc(value)}</span>
+            <span class="detail-label">${esc(label)}</span>
+          </div>`
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+  _renderAir() {
+    const aqi = this._num("aqi");
+    const pm25 = this._fmt("pm2_5");
+    const pm10 = this._fmt("pm10");
+    if (aqi == null && pm25 == null && pm10 == null) return "";
+
+    const map = this._map();
+    const color = aqiColor(aqi);
+    const pm = [pm25 && `PM2.5 ${pm25}`, pm10 && `PM10 ${pm10}`]
+      .filter(Boolean)
+      .join(" · ");
+
+    let track = "";
+    if (aqi != null) {
+      const pos = Math.min(Math.max(aqi, 0), 400) / 4; // % of 0-400 scale
+      let prev = 0;
+      const segments = AQI_BANDS.map(([bound, bandColor]) => {
+        const width = ((bound - prev) / 400) * 100;
+        prev = bound;
+        return `<i style="width:${width}%;background:${bandColor}"></i>`;
+      }).join("");
+      track = `
+        <div class="aqi-track">
+          ${segments}
+          <span class="aqi-marker" style="left:${pos}%;background:${color}"></span>
+        </div>`;
+    }
+
+    return `
+      ${this._sectionTitle("air_quality")}
+      <div class="aqi" data-entity="${esc(map.aqi || map.pm2_5 || "")}">
+        <div class="aqi-head">
+          ${aqi != null ? `<span class="aqi-value" style="color:${color}">AQI ${Math.round(aqi)}</span>` : ""}
+          ${pm ? `<span class="aqi-pm">${esc(pm)}</span>` : ""}
+        </div>
+        ${track}
+      </div>
+    `;
+  }
+
+  _renderAlerts() {
+    const count = this._num("active_alerts_count");
+    if (!count) return "";
+    const alerts = this._attr("active_alerts_count", "alerts") || [];
+    const first = alerts[0] || {};
+    const severity = String(first.severity || "").toLowerCase();
+    const grave = severity === "extreme" || severity === "severe";
+    const color = grave
+      ? STATUS_COLORS[4]
+      : severity === "moderate"
+        ? STATUS_COLORS[3]
+        : STATUS_COLORS[2];
+    const map = this._map();
+    return `
+      <div class="alert-banner ${grave ? "grave" : ""}" style="--alert-color:${color}"
+           data-entity="${esc(map.active_alerts_count || "")}">
+        <ha-icon icon="mdi:alert"></ha-icon>
+        <div class="alert-text">
+          <span class="alert-title">${esc(first.title || this._t("alerts"))}</span>
+          <span class="alert-sub">
+            ${count} ${count === 1 ? this._t("alert") : this._t("alerts_n")}
+            ${first.area ? ` · ${esc(first.area)}` : ""}
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Insight tiles ──────────────────────────────────────────────────────
+
+  _renderInsights() {
+    const wanted = this._config.insights;
+    const tiles = [
+      wanted.includes("comfort") && this._tileComfort(),
+      wanted.includes("radar") && this._tileRadar(),
+      wanted.includes("storm") && this._tileStorm(),
+      wanted.includes("pressure") && this._tilePressure(),
+      wanted.includes("frost") && this._tileFrost(),
+      wanted.includes("solar") && this._tileSolar(),
+      wanted.includes("air_trend") && this._tileAirTrend(),
+    ].filter(Boolean);
+    if (!tiles.length) return "";
+    return `
+      ${this._sectionTitle("insights")}
+      <div class="insights">${tiles.join("")}</div>
+    `;
+  }
+
+  /** Status chip: colored dot + label in normal ink (never color-alone). */
+  _status(key) {
+    const stateObj = this._stateObj(key);
+    const label = this._fmt(key);
+    if (!isKnown(stateObj) || label == null) return "";
+    return `
+      <span class="status">
+        <i style="background:${rankColor(key, stateObj.state)}"></i>${esc(label)}
+      </span>`;
+  }
+
+  /** First existing entity id among the given translation keys. */
+  _anchor(...keys) {
+    const map = this._map();
+    for (const key of keys) {
+      if (map[key]) return map[key];
+    }
+    return "";
+  }
+
+  _tile({ entityId, title, lead = "", main, rows = [], note }) {
+    const rowsHtml = rows
+      .filter((row) => row)
+      .join("");
+    return `
+      <div class="tile" data-entity="${esc(entityId || "")}">
+        <div class="tile-head">
+          <span class="tile-title">${esc(title)}</span>
+        </div>
+        <div class="tile-body">
+          ${lead}
+          <div class="tile-col">
+            ${main ? `<div class="tile-main">${main}</div>` : ""}
+            ${rowsHtml ? `<div class="tile-rows">${rowsHtml}</div>` : ""}
+          </div>
+        </div>
+        ${
+          note && !this._config.compact
+            ? `<div class="tile-note">${esc(note)}</div>`
+            : ""
+        }
+      </div>
+    `;
+  }
+
+  _kvRow(label, value) {
+    if (value == null || value === "") return "";
+    return `
+      <div class="tile-row">
+        <span>${esc(label)}</span><span>${esc(value)}</span>
+      </div>`;
+  }
+
+  _meterRow(label, percent) {
+    if (percent == null) return "";
+    const clamped = Math.min(Math.max(percent, 0), 100);
+    return `
+      <div class="meter-row">
+        <span class="meter-label">${esc(label)}</span>
+        <div class="meter"><i style="width:${clamped}%"></i></div>
+        <span class="meter-val">${Math.round(clamped)}%</span>
+      </div>`;
+  }
+
+  _tileComfort() {
+    const score = this._num("comfort_score");
+    if (score == null) return "";
+    const color = comfortColor(score);
+    const gauge = `
+      <div class="gauge" role="img" aria-label="${Math.round(score)}%">
+        <div class="gauge-ring" style="--p:${Math.min(Math.max(score, 0), 100)}%;--c:${color}"></div>
+        <div class="gauge-num">${Math.round(score)}</div>
+      </div>`;
+    return this._tile({
+      entityId: this._anchor("comfort_score", "comfort_label"),
+      title: this._t("comfort"),
+      lead: gauge,
+      main: this._status("comfort_label"),
+      note: this._attr("comfort_score", "description"),
+    });
+  }
+
+  _tileRadar() {
+    const trend = this._fmt("radar_trend");
+    const intensityObj = this._stateObj("radar_intensity");
+    if (trend == null && !isKnown(intensityObj)) return "";
+    const eta = this._num("radar_rain_eta");
+    const intensity = this._status("radar_intensity");
+    return this._tile({
+      entityId: this._anchor("radar_trend", "radar_intensity"),
+      title: this._t("radar"),
+      main: trend ? esc(trend) : intensity,
+      rows: [
+        trend && intensity
+          ? `<div class="tile-row"><span></span>${intensity}</div>`
+          : "",
+        this._kvRow(
+          this._t("eta"),
+          eta != null ? `${eta} ${this._t("min")}` : null
+        ),
+        this._kvRow(this._t("closest_rain"), this._fmt("radar_closest_rain")),
+        this._kvRow(this._t("rain_rate"), this._fmt("radar_rain_rate")),
+        this._meterRow(this._t("rain_30"), this._num("rain_probability_30min")),
+        this._meterRow(this._t("rain_60"), this._num("rain_probability_60min")),
+      ],
+    });
+  }
+
+  _tileStorm() {
+    const proximity = this._stateObj("storm_proximity");
+    if (!isKnown(proximity)) return "";
+    const eta = this._num("storm_eta");
+    const intensity = this._status("storm_intensity");
+    return this._tile({
+      entityId: this._anchor("storm_proximity", "storm_intensity"),
+      title: this._t("storm"),
+      main: this._status("storm_proximity"),
+      rows: [
+        intensity ? `<div class="tile-row"><span></span>${intensity}</div>` : "",
+        this._kvRow(
+          this._t("eta"),
+          eta != null ? `${eta} ${this._t("min")}` : null
+        ),
+        this._kvRow(this._t("lightning_30"), this._fmt("lightning_count_30min")),
+        this._kvRow(this._t("distance"), this._fmt("storm_lightning_distance")),
+      ],
+      note: this._attr("storm_proximity", "advisory"),
+    });
+  }
+
+  _tilePressure() {
+    const level = this._stateObj("pressure_alert_level");
+    if (!isKnown(level)) return "";
+    return this._tile({
+      entityId: this._anchor("pressure_alert_level", "pressure_trend"),
+      title: this._t("pressure"),
+      main: this._status("pressure_alert_level"),
+      rows: [
+        this._kvRow(this._t("trend"), this._fmt("pressure_trend")),
+        this._kvRow(this._t("change_rate"), this._fmt("pressure_change_rate")),
+        this._kvRow("Δ 3 h", this._attr("pressure_alert_level", "delta_3h_hpa")),
+        this._kvRow("Δ 6 h", this._attr("pressure_alert_level", "delta_6h_hpa")),
+      ],
+      note: this._attr("pressure_alert_level", "alert_text"),
+    });
+  }
+
+  _tileFrost() {
+    const level = this._stateObj("frost_level");
+    const probability = this._num("frost_probability");
+    if (!isKnown(level) && probability == null) return "";
+    return this._tile({
+      entityId: this._anchor("frost_probability", "frost_level"),
+      title: this._t("frost"),
+      main: this._status("frost_level"),
+      rows: [
+        this._meterRow(this._t("probability"), probability),
+        this._kvRow(this._t("window"), this._frostWindow()),
+      ],
+      note: this._attr("frost_probability", "advisory"),
+    });
+  }
+
+  _frostWindow() {
+    const start = this._attr("frost_probability", "window_start");
+    const end = this._attr("frost_probability", "window_end");
+    if (!start || !end) return null;
+    const lang = this._hass.language || "en";
+    const fmt = (iso) => {
+      const date = new Date(iso);
+      return Number.isNaN(date.getTime())
+        ? iso
+        : date.toLocaleString(lang, {
+            weekday: "short",
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+    };
+    return `${fmt(start)} – ${fmt(end)}`;
+  }
+
+  _tileSolar() {
+    const total = this._fmt("solar_total_kwh");
+    if (total == null) return "";
+    const label = this._status("solar_production_label");
+    return this._tile({
+      entityId: this._anchor("solar_total_kwh", "solar_production_label"),
+      title: this._t("solar"),
+      main: `<span class="big">${esc(total)}</span>`,
+      rows: [
+        label ? `<div class="tile-row"><span></span>${label}</div>` : "",
+        this._kvRow(this._t("peak"), this._fmt("solar_peak_kw")),
+        this._kvRow(this._t("efficiency"), this._fmt("solar_efficiency")),
+      ],
+      note: this._attr("solar_total_kwh", "summary"),
+    });
+  }
+
+  _tileAirTrend() {
+    const trend = this._stateObj("air_quality_trend");
+    if (!isKnown(trend)) return "";
+    return this._tile({
+      entityId: this._anchor("air_quality_trend"),
+      title: this._t("air_trend"),
+      main: this._status("air_quality_trend"),
+      rows: [
+        this._kvRow(this._t("category"), this._attr("air_quality_trend", "category")),
+      ],
+      note: this._attr("air_quality_trend", "advisory"),
+    });
+  }
+
+  // ── Forecast ───────────────────────────────────────────────────────────
+
+  _renderForecast(weather) {
+    if (!Array.isArray(this._forecast) || !this._forecast.length) return "";
+    const slots = this._forecast.slice(
+      0,
+      Math.max(3, Math.min(8, Number(this._config.forecast_slots) || 5))
+    );
+    const lang = this._hass.language || "en";
+    const type = this._config.forecast_type;
+    const daily = type === "daily";
+
+    const label = (item, index) => {
+      const date = new Date(item.datetime);
+      if (Number.isNaN(date.getTime())) return "";
+      if (type === "hourly") {
+        return date.toLocaleTimeString(lang, { hour: "numeric" });
+      }
+      const day = date.toLocaleDateString(lang, { weekday: "short" });
+      if (type === "twice_daily") {
+        return `${day}${item.is_daytime === false ? " ☾" : ""}`;
+      }
+      return day;
+    };
+
+    // Shared scale for the temperature range bars.
+    let lo = Infinity;
+    let hi = -Infinity;
+    if (daily) {
+      for (const item of slots) {
+        if (item.temperature != null) hi = Math.max(hi, item.temperature);
+        if (item.templow != null) lo = Math.min(lo, item.templow);
+      }
+    }
+    const span = hi - lo || 1;
+    const bars = daily && Number.isFinite(lo) && Number.isFinite(hi);
+
+    return `
+      ${this._sectionTitle("forecast")}
+      <div class="forecast">
+        ${slots
+          .map((item, index) => {
+            const icon =
+              CONDITION_ICONS[item.condition] || "mdi:weather-cloudy";
+            const precip =
+              item.precipitation_probability != null &&
+              item.precipitation_probability > 0
+                ? `<span class="fc-precip">${Math.round(item.precipitation_probability)}%</span>`
+                : `<span class="fc-precip"></span>`;
+            let barHtml = "";
+            if (bars && item.temperature != null && item.templow != null) {
+              const top = ((hi - item.temperature) / span) * 100;
+              const bottom = ((item.templow - lo) / span) * 100;
+              barHtml = `
+                <div class="fc-bar">
+                  <i style="top:${top}%;bottom:${bottom}%;
+                     background:linear-gradient(180deg,${tempColor(item.temperature)},${tempColor(item.templow)})"></i>
+                </div>`;
+            }
+            const low =
+              item.templow != null
+                ? `<span class="fc-lo">${Math.round(item.templow)}°</span>`
+                : "";
+            const temp =
+              item.temperature != null
+                ? `${Math.round(item.temperature)}°`
+                : "–";
+            return `
+            <div class="fc-slot ${index === 0 ? "today" : ""}">
+              <span class="fc-label">${esc(label(item, index))}</span>
+              <ha-icon icon="${icon}"></ha-icon>
+              <span class="fc-temp">${temp}</span>
+              ${barHtml}
+              ${low}
+              ${precip}
+            </div>`;
+          })
+          .join("")}
+      </div>
+    `;
+  }
+
+  // ── Styles ─────────────────────────────────────────────────────────────
+
+  static get styles() {
+    return `
+      :host { display: block; }
+      ha-card {
+        position: relative;
+        overflow: hidden;
+        container-type: inline-size;
+      }
+      .wash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background:
+          radial-gradient(120% 90% at 85% -10%,
+            color-mix(in srgb, var(--okr-wash-a) 26%, transparent),
+            transparent 55%),
+          linear-gradient(168deg,
+            color-mix(in srgb, var(--okr-wash-a) 14%, transparent),
+            color-mix(in srgb, var(--okr-wash-b) 5%, transparent) 40%,
+            transparent 68%);
+      }
+      .content {
+        position: relative;
+        padding: 14px 18px 18px;
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+      }
+      [data-entity]:not([data-entity=""]) { cursor: pointer; }
+      .warning { padding: 16px; color: var(--error-color, #d75449); }
+
+      /* Entrance — first render only, transform/opacity, honors reduced motion */
+      ha-card.animate .sec {
+        animation: okr-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
+        animation-delay: calc(var(--i) * 70ms);
+      }
+      @keyframes okr-rise {
+        from { opacity: 0; transform: translateY(7px); }
+        to { opacity: 1; transform: none; }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        ha-card.animate .sec { animation: none; }
+        .alert-banner.grave ha-icon { animation: none; }
+      }
+
+      .sec { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+
+      /* ── Header ───────────────────────────────────────────────────────── */
+      .header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .overline {
+        font-size: 10.5px;
+        font-weight: 600;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+        margin-bottom: 2px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .header-left { min-width: 0; flex: 1; }
+      .temp {
+        display: flex;
+        align-items: flex-start;
+        line-height: 1;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .temp-value {
+        font-size: clamp(38px, 15cqw, 56px);
+        font-weight: 300;
+        letter-spacing: -0.02em;
+      }
+      .temp-unit {
+        font-size: clamp(15px, 5cqw, 20px);
+        font-weight: 400;
+        color: var(--secondary-text-color);
+        margin: 6px 0 0 3px;
+      }
+      .cond {
+        margin-top: 5px;
+        font-size: 12.5px;
+        color: var(--secondary-text-color);
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 5px;
+        min-width: 0;
+      }
+      .cond .dot { opacity: 0.6; }
+      .range { display: inline-flex; gap: 6px; font-variant-numeric: tabular-nums; }
+      .range .hi { color: var(--primary-text-color); font-weight: 500; }
+      .range .lo { opacity: 0.85; }
+      .header-icon ha-icon {
+        --mdc-icon-size: clamp(44px, 16cqw, 58px);
+        color: var(--okr-accent);
+        filter: drop-shadow(0 3px 10px color-mix(in srgb, var(--okr-accent) 40%, transparent));
+      }
+
+      .offline {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--warning-color, #e07b39);
+      }
+      .offline ha-icon { --mdc-icon-size: 16px; }
+
+      /* ── Section captions ─────────────────────────────────────────────── */
+      .section-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.16em;
+        text-transform: uppercase;
+        color: color-mix(in srgb, var(--secondary-text-color) 80%, transparent);
+      }
+      .section-title::after {
+        content: "";
+        flex: 1;
+        height: 1px;
+        background: color-mix(in srgb, var(--divider-color) 80%, transparent);
+      }
+
+      /* ── Details: value-first instrument strip ────────────────────────── */
+      .details {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+        gap: 12px 16px;
+      }
+      .detail { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+      .detail-value {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .detail-label {
+        font-size: 9.5px;
+        font-weight: 500;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+
+      /* ── Air quality meter ────────────────────────────────────────────── */
+      .aqi { display: flex; flex-direction: column; gap: 7px; }
+      .aqi-head {
+        display: flex;
+        align-items: baseline;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .aqi-value {
+        font-size: 14px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+      }
+      .aqi-pm { font-size: 11.5px; color: var(--secondary-text-color); }
+      .aqi-track {
+        position: relative;
+        display: flex;
+        gap: 2px;
+        height: 5px;
+        margin: 3px 0 4px;
+      }
+      .aqi-track i {
+        height: 100%;
+        border-radius: 3px;
+        opacity: 0.42;
+      }
+      .aqi-marker {
+        position: absolute;
+        top: 50%;
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        transform: translate(-50%, -50%);
+        box-shadow: 0 0 0 2px var(--ha-card-background, var(--card-background-color, #fff));
+      }
+
+      /* ── Alert banner ─────────────────────────────────────────────────── */
+      .alert-banner {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 9px 12px;
+        border-radius: 10px;
+        background: color-mix(in srgb, var(--alert-color) 12%, transparent);
+      }
+      .alert-banner ha-icon { color: var(--alert-color); flex-shrink: 0; }
+      .alert-banner.grave ha-icon { animation: okr-pulse 2.2s ease-in-out infinite; }
+      @keyframes okr-pulse { 50% { opacity: 0.45; } }
+      .alert-text { display: flex; flex-direction: column; min-width: 0; }
+      .alert-title {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .alert-sub { font-size: 11px; color: var(--secondary-text-color); }
+
+      /* ── Insight tiles ────────────────────────────────────────────────── */
+      .insights {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+        gap: 8px;
+      }
+      .tile {
+        background: color-mix(in srgb, var(--primary-text-color) 4%, transparent);
+        border-radius: 12px;
+        padding: 10px 12px 11px;
+        display: flex;
+        flex-direction: column;
+        gap: 7px;
+        min-width: 0;
+      }
+      .tile-head { display: flex; align-items: center; }
+      .tile-title {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        color: var(--secondary-text-color);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .tile-body { display: flex; gap: 12px; align-items: flex-start; }
+      .tile-col { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+      .tile-main {
+        font-size: 14px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+        line-height: 1.15;
+      }
+      .tile-main .big {
+        font-size: 21px;
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+      }
+      .tile-rows { display: flex; flex-direction: column; gap: 3px; }
+      .tile-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 8px;
+        font-size: 11px;
+      }
+      .tile-row span:first-child { color: var(--secondary-text-color); }
+      .tile-row span:last-child {
+        color: var(--primary-text-color);
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        text-align: right;
+      }
+      .tile-note {
+        font-size: 11px;
+        line-height: 1.4;
+        color: var(--secondary-text-color);
+      }
+
+      /* Status chip: colored dot + label in ink */
+      .status {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--primary-text-color);
+      }
+      .status i {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        flex-shrink: 0;
+        box-shadow: 0 0 0 2px color-mix(in srgb, currentColor 0%, transparent);
+      }
+
+      /* Comfort ring gauge */
+      .gauge { position: relative; width: 52px; height: 52px; flex-shrink: 0; }
+      .gauge-ring {
+        position: absolute;
+        inset: 0;
+        border-radius: 50%;
+        background: conic-gradient(var(--c) var(--p),
+          color-mix(in srgb, var(--divider-color) 55%, transparent) 0);
+        -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+        mask: radial-gradient(farthest-side, transparent calc(100% - 6px), #000 calc(100% - 5px));
+      }
+      .gauge-num {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+
+      /* Probability meters */
+      .meter-row { display: flex; align-items: center; gap: 8px; font-size: 11px; }
+      .meter-label { color: var(--secondary-text-color); white-space: nowrap; }
+      .meter {
+        flex: 1;
+        height: 4px;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--divider-color) 55%, transparent);
+        overflow: hidden;
+      }
+      .meter i {
+        display: block;
+        height: 100%;
+        border-radius: 2px;
+        background: var(--okr-rain);
+      }
+      .meter-val {
+        color: var(--primary-text-color);
+        font-weight: 500;
+        font-variant-numeric: tabular-nums;
+        min-width: 30px;
+        text-align: right;
+      }
+
+      /* ── Forecast strip with temperature range bars ───────────────────── */
+      .forecast {
+        display: flex;
+        justify-content: space-between;
+        gap: 4px;
+        overflow: hidden;
+      }
+      .fc-slot {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+        flex: 1;
+        min-width: 0;
+      }
+      .fc-label {
+        font-size: 10.5px;
+        color: var(--secondary-text-color);
+        text-transform: capitalize;
+        white-space: nowrap;
+      }
+      .fc-slot.today .fc-label { color: var(--okr-accent); font-weight: 600; }
+      .fc-slot ha-icon {
+        --mdc-icon-size: 22px;
+        color: color-mix(in srgb, var(--secondary-text-color) 90%, transparent);
+      }
+      .fc-slot.today ha-icon { color: var(--okr-accent); }
+      .fc-temp {
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--primary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .fc-bar {
+        position: relative;
+        width: 4px;
+        height: 30px;
+        border-radius: 2px;
+        background: color-mix(in srgb, var(--divider-color) 55%, transparent);
+        margin: 1px 0;
+      }
+      .fc-bar i {
+        position: absolute;
+        left: 0;
+        right: 0;
+        border-radius: 2px;
+        min-height: 4px;
+      }
+      .fc-lo {
+        font-size: 11px;
+        color: var(--secondary-text-color);
+        font-variant-numeric: tabular-nums;
+      }
+      .fc-precip {
+        font-size: 10px;
+        min-height: 12px;
+        color: var(--okr-rain);
+        font-variant-numeric: tabular-nums;
+      }
+    `;
+  }
+}
+
+// ── Visual editor ──────────────────────────────────────────────────────────
+
+async function loadHaForm() {
+  if (customElements.get("ha-form")) return;
+  const helpers = await window.loadCardHelpers?.();
+  if (!helpers) return;
+  // The entities-card editor pulls in ha-form + all selectors.
+  const card = await helpers.createCardElement({ type: "entities", entities: [] });
+  await card.constructor.getConfigElement?.();
+  await customElements.whenDefined("ha-form");
+}
+
+const EDITOR_LABELS = {
+  en: {
+    entity: "Weather entity (OKRWeather station)",
+    name: "Title override",
+    show_current: "Current conditions",
+    show_details: "Details grid",
+    show_air_quality: "Air quality",
+    show_alerts: "Weather alerts",
+    show_forecast: "Forecast",
+    compact: "Compact mode",
+    forecast_type: "Forecast type",
+    forecast_slots: "Forecast items",
+    insights: "AI insight sections (premium)",
+    daily: "Daily",
+    hourly: "Hourly",
+    twice_daily: "Twice daily",
+    comfort: "Comfort index",
+    radar: "Rain radar",
+    storm: "Storm tracker",
+    pressure: "Pressure alert",
+    frost: "Frost alert",
+    solar: "Solar forecast",
+    air_trend: "Air quality trend",
+  },
+  pl: {
+    entity: "Encja pogody (stacja OKRWeather)",
+    name: "Własny tytuł",
+    show_current: "Bieżące warunki",
+    show_details: "Siatka szczegółów",
+    show_air_quality: "Jakość powietrza",
+    show_alerts: "Alerty pogodowe",
+    show_forecast: "Prognoza",
+    compact: "Tryb kompaktowy",
+    forecast_type: "Rodzaj prognozy",
+    forecast_slots: "Liczba pozycji prognozy",
+    insights: "Sekcje analiz AI (premium)",
+    daily: "Dzienna",
+    hourly: "Godzinowa",
+    twice_daily: "Dwa razy dziennie",
+    comfort: "Indeks komfortu",
+    radar: "Radar opadów",
+    storm: "Śledzenie burz",
+    pressure: "Alert ciśnieniowy",
+    frost: "Alert przymrozkowy",
+    solar: "Prognoza solarna",
+    air_trend: "Trend jakości powietrza",
+  },
+};
+
+class OKRWeatherCardEditor extends HTMLElement {
+  setConfig(config) {
+    this._config = config;
+    this._render();
+  }
+
+  set hass(hass) {
+    this._hass = hass;
+    this._render();
+  }
+
+  _labels() {
+    const lang = (this._hass?.language || "en").startsWith("pl") ? "pl" : "en";
+    return EDITOR_LABELS[lang];
+  }
+
+  _schema() {
+    const labels = this._labels();
+    const option = (value) => ({ value, label: labels[value] ?? value });
+    return [
+      {
+        name: "entity",
+        required: true,
+        selector: {
+          entity: {
+            filter: [{ integration: INTEGRATION_DOMAIN, domain: "weather" }],
+          },
+        },
+      },
+      { name: "name", selector: { text: {} } },
+      {
+        type: "grid",
+        name: "",
+        schema: [
+          { name: "show_current", selector: { boolean: {} } },
+          { name: "show_details", selector: { boolean: {} } },
+          { name: "show_air_quality", selector: { boolean: {} } },
+          { name: "show_alerts", selector: { boolean: {} } },
+          { name: "show_forecast", selector: { boolean: {} } },
+          { name: "compact", selector: { boolean: {} } },
+        ],
+      },
+      {
+        type: "grid",
+        name: "",
+        schema: [
+          {
+            name: "forecast_type",
+            selector: {
+              select: {
+                mode: "dropdown",
+                options: ["daily", "hourly", "twice_daily"].map(option),
+              },
+            },
+          },
+          {
+            name: "forecast_slots",
+            selector: { number: { min: 3, max: 8, mode: "slider" } },
+          },
+        ],
+      },
+      {
+        name: "insights",
+        selector: {
+          select: {
+            multiple: true,
+            mode: "list",
+            options: ALL_INSIGHTS.map(option),
+          },
+        },
+      },
+    ];
+  }
+
+  _render() {
+    if (!this._hass || !this._config) return;
+    if (!this._form) {
+      this._form = document.createElement("ha-form");
+      this._form.addEventListener("value-changed", (ev) => {
+        ev.stopPropagation();
+        const config = { ...this._config, ...ev.detail.value };
+        this._config = config;
+        this.dispatchEvent(
+          new CustomEvent("config-changed", {
+            bubbles: true,
+            composed: true,
+            detail: { config },
+          })
+        );
+      });
+      this.appendChild(this._form);
+    }
+    // Memoize per language / per config object — ha-form dirty-checks by
+    // reference, and `hass` is re-assigned on every state change.
+    const lang = (this._hass.language || "en").startsWith("pl") ? "pl" : "en";
+    if (this._schemaLang !== lang) {
+      this._schemaLang = lang;
+      this._schemaCache = this._schema();
+      const labels = this._labels();
+      this._computeLabel = (schema) => labels[schema.name] ?? schema.name;
+    }
+    if (this._dataFor !== this._config) {
+      this._dataFor = this._config;
+      this._dataCache = { ...DEFAULT_CONFIG, ...this._config };
+    }
+    this._form.hass = this._hass;
+    this._form.data = this._dataCache;
+    this._form.schema = this._schemaCache;
+    this._form.computeLabel = this._computeLabel;
+  }
+}
+
+if (!customElements.get(CARD_TYPE)) {
+  customElements.define(CARD_TYPE, OKRWeatherCard);
+  customElements.define("okrweather-card-editor", OKRWeatherCardEditor);
+}
+
+window.customCards = window.customCards || [];
+if (!window.customCards.some((card) => card.type === CARD_TYPE)) {
+  window.customCards.push({
+    type: CARD_TYPE,
+    name: "OKRWeather Card",
+    description:
+      "Hyperlocal station widget for Pogoda OKR — live readings, air quality, alerts, forecast and premium AI insights.",
+    preview: true,
+    documentationURL:
+      "https://github.com/sysoppl/OKRWeather_HomeAssistant#dashboard-card",
+  });
+}
+
+// The card ships inside the integration; its version is the integration
+// version (manifest.json), which also drives the ?v= cache-buster.
+console.info(
+  "%c OKRWEATHER-CARD %c loaded ",
+  "background:#1565c0;color:#fff;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:700",
+  "background:#37474f;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0"
+);

@@ -3,11 +3,12 @@
   "name": "OKRWeather (Pogoda OKR)",
   "codeowners": ["@sysoppl"],
   "config_flow": true,
+  "dependencies": ["http", "frontend"],
   "documentation": "https://github.com/sysoppl/OKRWeather_HomeAssistant",
   "integration_type": "hub",
   "iot_class": "cloud_polling",
   "issue_tracker": "https://github.com/sysoppl/OKRWeather_HomeAssistant/issues",
   "loggers": ["custom_components.okrweather"],
   "requirements": [],
-  "version": "2.1.0"
+  "version": "2.2.0"
 }
