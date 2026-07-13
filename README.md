@@ -95,13 +95,15 @@ Premium features are part of the OKRWeather subscription tiers (3/6/12-month pla
 
 Some sensors are disabled by default (ground temperature, soil moisture, snow depth, gas concentrations, radiation, light level, lightning distance) — enable them from the device page if your station reports them.
 
-## Dashboard card
+## Dashboard cards
 
-The integration bundles its own Lovelace card — **OKRWeather Card** — served and registered automatically. No HACS frontend install, no manual resource entry: after setting up the integration (and one page refresh), it appears in the card picker under *Custom: OKRWeather Card*.
+The integration bundles its own family of Lovelace cards — served and registered automatically. No HACS frontend install, no manual resource entry: after setting up the integration (and one page refresh), they appear in the card picker under *Custom: OKRWeather …*.
 
-The card shows the station header (condition, temperature, feels-like), a details grid, air-quality chips, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar, air trend) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
+All cards share one design language, resolve their sensors through the device registry (renamed/non-English entity IDs just work), open the more-info dialog on click, and have full **visual editors** (English and Polish).
 
-Everything is configurable in the **visual editor** (UI labels in English and Polish), or via YAML:
+### The full station card
+
+`custom:okrweather-card` shows the station header with a condition-adaptive accent palette, a details grid, the EPA-banded AQI meter, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar, air trend) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
 
 ```yaml
 type: custom:okrweather-card
@@ -125,7 +127,32 @@ insights:                       # premium AI tiles to render (default: all)
 compact: false                  # true hides captions and advisory texts
 ```
 
-Sensor entities are resolved through the device registry (by translation key), so renamed entity IDs and non-English installations work without extra configuration. Clicking any value opens its more-info dialog.
+### Feature cards
+
+Smaller single-purpose widgets for composing your own dashboard. Every feature card takes `entity` (the station's weather entity, required), `name` (title override) and `show_title`; insight cards add `show_note` for the advisory text.
+
+| Card type | Shows | Extra options |
+|---|---|---|
+| `custom:okrweather-forecast-card` | Forecast strip with temperature range bars | `forecast_type`, `forecast_slots` |
+| `custom:okrweather-details-card` | Live readings grid | `fields` — pick exactly which values |
+| `custom:okrweather-air-quality-card` | EPA-banded AQI meter + PM2.5/PM10 | — |
+| `custom:okrweather-alerts-card` | All active government alerts (or a calm "no alerts") | — |
+| `custom:okrweather-comfort-card` | Comfort ring + label | `show_factors` — per-factor meters |
+| `custom:okrweather-radar-card` | Radar trend, intensity, ETA, rain probabilities | — |
+| `custom:okrweather-storm-card` | Storm proximity, intensity, ETA, lightning | — |
+| `custom:okrweather-pressure-card` | Pressure alert level, trend, Δ3h/Δ6h | — |
+| `custom:okrweather-frost-card` | Frost probability, level, window | — |
+| `custom:okrweather-solar-card` | Today's kWh, peak kW, efficiency | — |
+| `custom:okrweather-air-trend-card` | AI air-quality trend | — |
+
+```yaml
+# Example: a compact premium row
+type: custom:okrweather-details-card
+entity: weather.gogolin_rondo
+fields: [temperature, wind_speed, wind_gust, humidity, pressure]
+```
+
+Premium feature cards show a quiet "No data available" state when the hub has no API key or the backend hasn't published a fresh row.
 
 ## Automation ideas
 
