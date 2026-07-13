@@ -23,6 +23,7 @@ Hyperlocal weather data for **Powiat Krapkowicki / Opolski** (Opolskie, Poland) 
 **Bundled dashboard cards (no manual resources):**
 - **OKRWeather Card** — the full station widget: current conditions with a condition-adaptive palette, details grid, air quality, alert banner, AI insight tiles and forecast; fully configurable via the visual editor (EN/PL)
 - **11 feature cards** — small single-purpose widgets (forecast, details, air quality, alerts, comfort, radar, storm, pressure, frost, solar, air trend) for composing your own dashboard
+- **Configurable backgrounds** on every card — follow the weather, flat, seven ambient presets or fully custom colors, with an intensity slider
 
 ## After installing
 

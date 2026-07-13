@@ -77,6 +77,8 @@ const ALL_DETAIL_FIELDS = [
 
 const DEFAULT_CONFIG = {
   name: "",
+  background: "condition",
+  background_intensity: 100,
   show_current: true,
   show_details: true,
   show_air_quality: true,
@@ -129,6 +131,29 @@ const CONDITION_THEMES = {
   exceptional: { accent: "#d98a3d", washA: "#d98a3d", washB: "#a85f28" },
 };
 const DEFAULT_THEME = CONDITION_THEMES.cloudy;
+
+/**
+ * Fixed ambient palettes selectable via the `background` option — same
+ * accent + two-tone wash structure as the condition themes, so a preset
+ * behaves identically on light and dark HA themes.
+ */
+const BACKGROUND_PRESETS = {
+  sunrise: { accent: "#e8875a", washA: "#f0a05c", washB: "#c96a8a" },
+  amber: { accent: "#dda03c", washA: "#e8b45c", washB: "#a8742a" },
+  forest: { accent: "#5da06b", washA: "#6fb27c", washB: "#3d7a52" },
+  ocean: { accent: "#4d9bc9", washA: "#56a8d8", washB: "#2e6f9e" },
+  dusk: { accent: "#8d7fc9", washA: "#7d6fc0", washB: "#453a78" },
+  midnight: { accent: "#7d93c4", washA: "#2c3a63", washB: "#101830" },
+  graphite: { accent: "#93a1ad", washA: "#8b98a5", washB: "#5d6a76" },
+};
+
+/** `background` option values: follow the weather, flat, preset, or custom. */
+const BACKGROUND_MODES = [
+  "condition",
+  "none",
+  ...Object.keys(BACKGROUND_PRESETS),
+  "custom",
+];
 
 const RAIN_COLOR = "#4f86ba";
 
@@ -292,6 +317,15 @@ const esc = (value) =>
         .replace(/>/g, "&gt;")
         .replace(/"/g, "&quot;");
 
+/** Accepts a color_rgb array ([r,g,b]) or a CSS color string from YAML. */
+const cssColor = (value, fallback) => {
+  if (Array.isArray(value) && value.length >= 3) {
+    return `rgb(${Number(value[0]) || 0}, ${Number(value[1]) || 0}, ${Number(value[2]) || 0})`;
+  }
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return fallback;
+};
+
 const bearingToCardinal = (deg) => {
   if (typeof deg !== "number" || Number.isNaN(deg)) return null;
   return CARDINALS[Math.round((((deg % 360) + 360) % 360) / 22.5) % 16];
@@ -360,11 +394,11 @@ const STYLES = `
     pointer-events: none;
     background:
       radial-gradient(120% 90% at 85% -10%,
-        color-mix(in srgb, var(--okr-wash-a) 26%, transparent),
+        color-mix(in srgb, var(--okr-wash-a) calc(26% * var(--okr-tint, 1)), transparent),
         transparent 55%),
       linear-gradient(168deg,
-        color-mix(in srgb, var(--okr-wash-a) 14%, transparent),
-        color-mix(in srgb, var(--okr-wash-b) 5%, transparent) 40%,
+        color-mix(in srgb, var(--okr-wash-a) calc(14% * var(--okr-tint, 1)), transparent),
+        color-mix(in srgb, var(--okr-wash-b) calc(5% * var(--okr-tint, 1)), transparent) 40%,
         transparent 68%);
   }
   .content {
@@ -844,6 +878,44 @@ class OKRBaseCard extends HTMLElement {
   /** Whether this card needs the weather forecast subscription. */
   _wantsForecast() {
     return false;
+  }
+
+  /** Background mode used when the config doesn't set one. */
+  _defaultBackground() {
+    return "none";
+  }
+
+  /**
+   * Resolve the card's ambience (accent + wash palette) from the
+   * `background` config: follow the live condition, a fixed preset,
+   * custom colors, or flat ("none" — accent still follows the weather).
+   */
+  _ambience(weather) {
+    const conditionTheme =
+      (weather && CONDITION_THEMES[weather.state]) || DEFAULT_THEME;
+    const mode = this._config.background || this._defaultBackground();
+    let theme = conditionTheme;
+    const wash = mode !== "none";
+    if (mode === "custom") {
+      theme = {
+        accent: cssColor(this._config.custom_accent, conditionTheme.accent),
+        washA: cssColor(this._config.custom_wash_a, conditionTheme.washA),
+        washB: cssColor(this._config.custom_wash_b, conditionTheme.washB),
+      };
+    } else if (BACKGROUND_PRESETS[mode]) {
+      theme = BACKGROUND_PRESETS[mode];
+    }
+    const raw = Number(this._config.background_intensity);
+    const tint = Number.isFinite(raw) ? Math.max(0, Math.min(2, raw / 100)) : 1;
+    return { ...theme, wash, tint };
+  }
+
+  _ambienceStyle(amb) {
+    return (
+      `--okr-accent:${esc(amb.accent)};--okr-wash-a:${esc(amb.washA)};` +
+      `--okr-wash-b:${esc(amb.washB)};--okr-rain:${RAIN_COLOR};` +
+      `--okr-tint:${amb.tint}`
+    );
   }
 
   // ── Entity resolution ──────────────────────────────────────────────────
@@ -1432,6 +1504,10 @@ class OKRWeatherCard extends OKRBaseCard {
     return !!this._config?.show_forecast;
   }
 
+  _defaultBackground() {
+    return "condition";
+  }
+
   getCardSize() {
     if (!this._config) return 4;
     let size = 2;
@@ -1449,8 +1525,7 @@ class OKRWeatherCard extends OKRBaseCard {
     if (!this._hass || !this._config) return;
     const config = this._config;
     const weather = this._hass.states[config.entity];
-    const theme =
-      (weather && CONDITION_THEMES[weather.state]) || DEFAULT_THEME;
+    const amb = this._ambience(weather);
 
     let body;
     if (!weather) {
@@ -1485,9 +1560,8 @@ class OKRWeatherCard extends OKRBaseCard {
     this._animatedOnce = true;
 
     this._root.innerHTML = `
-      <ha-card class="${animate ? "animate" : ""}"
-        style="--okr-accent:${theme.accent};--okr-wash-a:${theme.washA};--okr-wash-b:${theme.washB};--okr-rain:${RAIN_COLOR}">
-        <div class="wash"></div>
+      <ha-card class="${animate ? "animate" : ""}" style="${this._ambienceStyle(amb)}">
+        ${amb.wash ? '<div class="wash"></div>' : ""}
         <div class="content">${body}</div>
       </ha-card>
     `;
@@ -1858,6 +1932,8 @@ function defineFeatureCard(spec) {
       this._config = {
         name: "",
         show_title: true,
+        background: "none",
+        background_intensity: 100,
         ...spec.defaults,
         ...config,
       };
@@ -1884,8 +1960,7 @@ function defineFeatureCard(spec) {
     _render() {
       if (!this._hass || !this._config) return;
       const weather = this._hass.states[this._config.entity];
-      const theme =
-        (weather && CONDITION_THEMES[weather.state]) || DEFAULT_THEME;
+      const amb = this._ambience(weather);
 
       let body;
       if (!weather) {
@@ -1909,8 +1984,8 @@ function defineFeatureCard(spec) {
         : "";
 
       this._root.innerHTML = `
-        <ha-card class="mini"
-          style="--okr-accent:${theme.accent};--okr-rain:${RAIN_COLOR}">
+        <ha-card class="mini" style="${this._ambienceStyle(amb)}">
+          ${amb.wash ? '<div class="wash"></div>' : ""}
           <div class="content">${title}${body}</div>
         </ha-card>
       `;
@@ -1943,6 +2018,21 @@ const EDITOR_LABELS = {
   en: {
     entity: "Weather entity (OKRWeather station)",
     name: "Title override",
+    background: "Background",
+    background_intensity: "Background intensity (%)",
+    condition: "Follow the weather",
+    none: "Theme default (flat)",
+    custom: "Custom colors",
+    sunrise: "Sunrise",
+    amber: "Amber",
+    forest: "Forest",
+    ocean: "Ocean",
+    dusk: "Dusk",
+    midnight: "Midnight",
+    graphite: "Graphite",
+    custom_accent: "Accent color",
+    custom_wash_a: "Background color 1",
+    custom_wash_b: "Background color 2",
     show_current: "Current conditions",
     show_details: "Details grid",
     show_air_quality: "Air quality",
@@ -1980,6 +2070,21 @@ const EDITOR_LABELS = {
   pl: {
     entity: "Encja pogody (stacja OKRWeather)",
     name: "Własny tytuł",
+    background: "Tło",
+    background_intensity: "Intensywność tła (%)",
+    condition: "Zgodnie z pogodą",
+    none: "Domyślne tło motywu",
+    custom: "Własne kolory",
+    sunrise: "Świt",
+    amber: "Bursztyn",
+    forest: "Las",
+    ocean: "Ocean",
+    dusk: "Zmierzch",
+    midnight: "Północ",
+    graphite: "Grafit",
+    custom_accent: "Kolor akcentu",
+    custom_wash_a: "Kolor tła 1",
+    custom_wash_b: "Kolor tła 2",
     show_current: "Bieżące warunki",
     show_details: "Siatka szczegółów",
     show_air_quality: "Jakość powietrza",
@@ -2019,6 +2124,37 @@ const EDITOR_LABELS = {
 EDITOR_LABELS.en.pressure_field = "Pressure";
 EDITOR_LABELS.pl.pressure_field = "Ciśnienie";
 
+const BACKGROUND_SCHEMA = (option) => [
+  {
+    type: "grid",
+    name: "",
+    schema: [
+      {
+        name: "background",
+        selector: {
+          select: { mode: "dropdown", options: BACKGROUND_MODES.map(option) },
+        },
+      },
+      {
+        name: "background_intensity",
+        selector: { number: { min: 0, max: 200, step: 10, mode: "slider" } },
+      },
+    ],
+  },
+];
+
+const CUSTOM_COLOR_SCHEMA = [
+  {
+    type: "grid",
+    name: "",
+    schema: [
+      { name: "custom_accent", selector: { color_rgb: {} } },
+      { name: "custom_wash_a", selector: { color_rgb: {} } },
+      { name: "custom_wash_b", selector: { color_rgb: {} } },
+    ],
+  },
+];
+
 class OKRWeatherCardEditor extends HTMLElement {
   setConfig(config) {
     this._config = config;
@@ -2049,6 +2185,8 @@ class OKRWeatherCardEditor extends HTMLElement {
         },
       },
       { name: "name", selector: { text: {} } },
+      ...BACKGROUND_SCHEMA(option),
+      ...(this._config?.background === "custom" ? CUSTOM_COLOR_SCHEMA : []),
       {
         type: "grid",
         name: "",
@@ -2111,11 +2249,13 @@ class OKRWeatherCardEditor extends HTMLElement {
       });
       this.appendChild(this._form);
     }
-    // Memoize per language / per config object — ha-form dirty-checks by
-    // reference, and `hass` is re-assigned on every state change.
+    // Memoize per language + background mode / per config object — ha-form
+    // dirty-checks by reference, and `hass` is re-assigned on every state
+    // change. The schema gains color pickers when background is "custom".
     const lang = (this._hass.language || "en").startsWith("pl") ? "pl" : "en";
-    if (this._schemaLang !== lang) {
-      this._schemaLang = lang;
+    const schemaKey = `${lang}|${this._config?.background === "custom"}`;
+    if (this._schemaKey !== schemaKey) {
+      this._schemaKey = schemaKey;
       this._schemaCache = this._schema();
       const labels = this._labels();
       this._computeLabel = (schema) => labels[schema.name] ?? schema.name;
@@ -2174,6 +2314,8 @@ class OKRFeatureEditor extends HTMLElement {
         },
       },
       { name: "name", selector: { text: {} } },
+      ...BACKGROUND_SCHEMA(option),
+      ...(this._config?.background === "custom" ? CUSTOM_COLOR_SCHEMA : []),
       { type: "grid", name: "", schema: toggles },
       ...(spec.extraSchema ? spec.extraSchema(option) : []),
     ];
@@ -2198,8 +2340,9 @@ class OKRFeatureEditor extends HTMLElement {
       this.appendChild(this._form);
     }
     const lang = (this._hass.language || "en").startsWith("pl") ? "pl" : "en";
-    if (this._schemaLang !== lang) {
-      this._schemaLang = lang;
+    const schemaKey = `${lang}|${this._config?.background === "custom"}`;
+    if (this._schemaKey !== schemaKey) {
+      this._schemaKey = schemaKey;
       this._schemaCache = this._schema();
       const labels = this._labels();
       this._computeLabel = (schema) => labels[schema.name] ?? schema.name;
@@ -2209,6 +2352,8 @@ class OKRFeatureEditor extends HTMLElement {
       this._dataCache = {
         name: "",
         show_title: true,
+        background: "none",
+        background_intensity: 100,
         ...this._spec.defaults,
         ...this._config,
       };

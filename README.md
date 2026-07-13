@@ -101,6 +101,22 @@ The integration bundles its own family of Lovelace cards — served and register
 
 All cards share one design language, resolve their sensors through the device registry (renamed/non-English entity IDs just work), open the more-info dialog on click, and have full **visual editors** (English and Polish).
 
+### Backgrounds
+
+Every card takes a `background` option (with an intensity slider in the editor):
+
+- `condition` — the accent palette and background wash follow the live weather (default for the full card)
+- `none` — flat theme background; the accent still follows the weather (default for feature cards)
+- `sunrise` / `amber` / `forest` / `ocean` / `dusk` / `midnight` / `graphite` — fixed ambient presets that adapt to light and dark themes
+- `custom` — pick your own accent + two wash colors in the editor (or via YAML: `custom_accent`, `custom_wash_a`, `custom_wash_b`)
+
+```yaml
+type: custom:okrweather-forecast-card
+entity: weather.gogolin_rondo
+background: ocean
+background_intensity: 140   # 0–200, default 100
+```
+
 ### The full station card
 
 `custom:okrweather-card` shows the station header with a condition-adaptive accent palette, a details grid, the EPA-banded AQI meter, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar, air trend) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
@@ -116,6 +132,8 @@ show_alerts: true               # government weather alert banner
 show_forecast: true
 forecast_type: daily            # daily | hourly | twice_daily
 forecast_slots: 5               # 3–8 forecast entries
+background: condition           # condition | none | preset name | custom
+background_intensity: 100       # 0–200 wash strength
 insights:                       # premium AI tiles to render (default: all)
   - comfort
   - radar
