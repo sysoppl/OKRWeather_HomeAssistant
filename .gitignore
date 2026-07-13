@@ -40,3 +40,12 @@ htmlcov/
 .env
 .env.local
 secrets.yaml
+
+# Appwrite backend (local only — never commit)
+appwrite.config.json
+appwrite.json
+functions/
+.appwrite/
+
+# Local agent tooling
+.agents/
