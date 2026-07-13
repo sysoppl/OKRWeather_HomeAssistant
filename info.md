@@ -20,6 +20,9 @@ Hyperlocal weather data for **Powiat Krapkowicki / Opolski** (Opolskie, Poland) 
 - Solar production forecast (kWh, peak kW, efficiency)
 - Air-quality trend
 
+**Bundled dashboard card:**
+- **OKRWeather Card** — auto-registered Lovelace card (no manual resources) with current conditions, details grid, air quality, alert banner, AI insight tiles and forecast; fully configurable via the visual editor (EN/PL)
+
 ## After installing
 
 Add the integration via **Settings → Devices & Services → Add integration → OKRWeather**, optionally paste your premium API key, then tick the stations you want. More stations can be added later via **Add weather station** on the integration page.

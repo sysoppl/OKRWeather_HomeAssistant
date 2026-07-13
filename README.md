@@ -95,6 +95,38 @@ Premium features are part of the OKRWeather subscription tiers (3/6/12-month pla
 
 Some sensors are disabled by default (ground temperature, soil moisture, snow depth, gas concentrations, radiation, light level, lightning distance) — enable them from the device page if your station reports them.
 
+## Dashboard card
+
+The integration bundles its own Lovelace card — **OKRWeather Card** — served and registered automatically. No HACS frontend install, no manual resource entry: after setting up the integration (and one page refresh), it appears in the card picker under *Custom: OKRWeather Card*.
+
+The card shows the station header (condition, temperature, feels-like), a details grid, air-quality chips, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar, air trend) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
+
+Everything is configurable in the **visual editor** (UI labels in English and Polish), or via YAML:
+
+```yaml
+type: custom:okrweather-card
+entity: weather.gogolin_rondo   # the station's weather entity (required)
+name: Gogolin                   # optional title override
+show_current: true              # header with condition + temperature
+show_details: true              # humidity/pressure/wind/… grid
+show_air_quality: true          # AQI / PM2.5 / PM10 chips
+show_alerts: true               # government weather alert banner
+show_forecast: true
+forecast_type: daily            # daily | hourly | twice_daily
+forecast_slots: 5               # 3–8 forecast entries
+insights:                       # premium AI tiles to render (default: all)
+  - comfort
+  - radar
+  - storm
+  - pressure
+  - frost
+  - solar
+  - air_trend
+compact: false                  # true hides captions and advisory texts
+```
+
+Sensor entities are resolved through the device registry (by translation key), so renamed entity IDs and non-English installations work without extra configuration. Clicking any value opens its more-info dialog.
+
 ## Automation ideas
 
 ```yaml
