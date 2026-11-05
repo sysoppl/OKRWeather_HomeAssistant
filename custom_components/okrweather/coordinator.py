@@ -162,11 +162,16 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
             active_alerts: list[dict[str, Any]] = previous.get("alerts") or []
         else:
             now = datetime.now(UTC)
+            # Alert rows are kept as history; only active (or legacy, status
+            # null) rows that have not expired are current.
             active_alerts = [
                 alert
                 for alert in alerts_result
-                if (expires := parse_iso(alert.get("expirationTime"))) is None
-                or expires > now
+                if alert.get("status") in (None, "active")
+                and (
+                    (expires := parse_iso(alert.get("expirationTime"))) is None
+                    or expires > now
+                )
             ]
 
         data: dict[str, Any] = {"alerts": active_alerts, "stations": {}}
