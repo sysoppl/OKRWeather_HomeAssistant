@@ -19,7 +19,9 @@ from __future__ import annotations
 import asyncio
 import json
 import socket
+from datetime import UTC, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import aiohttp
 from yarl import URL
@@ -70,6 +72,31 @@ def _q(method: str, attribute: str | None = None, values: Any = None) -> str:
     if values is not None:
         payload["values"] = values if isinstance(values, list) else [values]
     return json.dumps(payload, separators=(",", ":"))
+
+
+_WARSAW = ZoneInfo("Europe/Warsaw")
+
+
+def hourly_since(now: datetime | None = None) -> str:
+    """Lower bound for hourly forecast rows: the start of the previous hour (UTC).
+
+    The forecast tables keep past rows (the last issued forecast for each
+    hour), so every forecast query needs a time bound; without one an
+    ascending query with a limit returns the oldest rows.
+    """
+    now = now or datetime.now(UTC)
+    start = (now.astimezone(UTC) - timedelta(hours=1)).replace(minute=0, second=0, microsecond=0)
+    return start.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def daily_since(now: datetime | None = None) -> str:
+    """First current forecast date (YYYY-MM-DD).
+
+    The forecast day runs 07:00 -> 07:00 Europe/Warsaw, so before 07:00 local
+    the first current day still carries the previous calendar date.
+    """
+    now = now or datetime.now(UTC)
+    return (now.astimezone(_WARSAW) - timedelta(hours=7)).date().isoformat()
 
 
 # ── Client ───────────────────────────────────────────────────────────────────
@@ -135,6 +162,7 @@ class OKRWeatherApiClient:
             TABLE_HOURLY_FORECASTS,
             queries=[
                 _q("equal", "cityId", [city_id]),
+                _q("greaterThanEqual", "forecastTime", hourly_since()),
                 _q("orderAsc", "forecastTime"),
                 _q("limit", values=hours),
             ],
@@ -146,6 +174,7 @@ class OKRWeatherApiClient:
             TABLE_DAILY_FORECASTS,
             queries=[
                 _q("equal", "cityId", [city_id]),
+                _q("greaterThanEqual", "forecastDate", daily_since()),
                 _q("orderAsc", "forecastDate"),
                 _q("limit", values=days),
             ],
