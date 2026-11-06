@@ -2,16 +2,20 @@
 
 Three coordinators per hub entry, each on its own cadence:
 
-* **Live** (fast, public) — station readings, air quality, lightning, alerts.
+* **Live** (fast, public) — station readings, measured air quality, alerts.
 * **Insights** (medium, premium) — the active AI tables: comfort index, radar
-  analysis, storm tracker, pressure alerts, frost alerts, solar forecast and
-  air-quality trend. Skipped entirely when no API key is configured.
+  analysis, storm tracker, pressure alerts, frost alerts and solar forecast.
+  Skipped entirely when no API key is configured.
 * **Forecast** (slow, public) — hourly + daily forecasts per city.
 
 All coordinators publish dicts keyed by station subentry_id so entities for
 every configured station share the same requests. AI rows are fetched once
 per table (newest N rows) and grouped per station client-side, instead of
 one request per station per table.
+
+Live and insight reads go through :class:`~.sources.TableResolver`: every
+table is read on its own, so a missing (renamed or removed) table or a
+failing request only blanks or freezes its own piece of data.
 """
 
 from __future__ import annotations
@@ -25,20 +29,28 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import (
     OKRWeatherApiAuthError,
-    OKRWeatherApiCommunicationError,
     OKRWeatherApiError,
     OKRWeatherApiPermissionError,
+    _q,
 )
 from .const import (
+    AIR_MAX_AGE_MIN,
     DOMAIN,
     INSIGHT_MAX_AGE_MIN,
     INSIGHT_TABLES,
+    LIVE_LOOKBACK_HOURS,
+    LIVE_STALE_MINUTES,
     LOGGER,
     SECTION_RADAR,
-    TABLE_AIR,
-    TABLE_LIGHTNING,
-    TABLE_RADAR_STATUS,
-    TABLE_WEATHER,
+)
+from .sources import (
+    AIR_QUALITY,
+    ALERTS,
+    INSIGHT_SOURCES,
+    RADAR,
+    STATION_READINGS,
+    Lookup,
+    TableResolver,
 )
 from .util import (
     age_minutes,
@@ -53,6 +65,34 @@ if TYPE_CHECKING:
 
     from .api import OKRWeatherApiClient
     from .data import OKRWeatherConfigEntry, StationConfig
+
+# Current aggregate air-quality row of a station (AIRLY contract: the
+# averaged Gogolin sensors are written with source "aggregate").
+_AIR_CURRENT = (
+    _q("equal", "kind", ["current"]),
+    _q("equal", "source", ["aggregate"]),
+)
+
+
+def _keep_or(lookup: Lookup, previous: Any) -> Any:
+    """The newest row, or the previous value when every candidate failed."""
+    return previous if lookup.failed else lookup.row
+
+
+def valid_air(row: Any, now: datetime) -> dict[str, Any] | None:
+    """Measured air-quality row, or None when it must read as "no data".
+
+    Rules from the backend contract: offline status, no PM value at all, or
+    a measurement older than AIR_MAX_AGE_MIN all mean no data.
+    """
+    if not isinstance(row, dict) or row.get("qc_status") == "offline":
+        return None
+    if row.get("pm25") is None and row.get("pm10") is None:
+        return None
+    till = parse_iso(row.get("till_at"))
+    if till is None or now - till > timedelta(minutes=AIR_MAX_AGE_MIN):
+        return None
+    return row
 
 
 class OKRWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -75,11 +115,19 @@ class OKRWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             update_interval=update_interval,
             config_entry=entry,
         )
+        self._sources: TableResolver | None = None
 
     @property
     def client(self) -> OKRWeatherApiClient:
         """The shared API client living on runtime_data."""
         return self.config_entry.runtime_data.client
+
+    @property
+    def sources(self) -> TableResolver:
+        """Table reader with rename fallback; caches live for this session."""
+        if self._sources is None:
+            self._sources = TableResolver(self.client)
+        return self._sources
 
     @property
     def stations(self) -> dict[str, StationConfig]:
@@ -91,7 +139,7 @@ class OKRWeatherCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
 
 class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
-    """Polls live readings (weather, air, lightning) and alerts.
+    """Polls live readings (station, measured air quality) and alerts.
 
     Public tables only, so this works with or without an API key.
     """
@@ -123,50 +171,58 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
             except OKRWeatherApiError as err:
                 LOGGER.debug("Station metadata refresh failed, will retry: %s", err)
 
-        async def fetch_station(station: StationConfig) -> dict[str, Any]:
-            weather, air, lightning = await asyncio.gather(
-                self.client.latest_station_row(TABLE_WEATHER, station.appwrite_id),
-                self.client.latest_station_row(TABLE_AIR, station.appwrite_id),
-                self.client.latest_station_row(TABLE_LIGHTNING, station.appwrite_id),
-            )
-            return {"weather": weather, "air": air, "lightning": lightning}
+        now = datetime.now(UTC)
+        sources = self.sources
 
-        # One failing station must not black out the others: collect
-        # exceptions per fetch and fall back to that slice's previous data.
-        results = await asyncio.gather(
-            self.client.recent_alerts(),
+        async def fetch_station(station: StationConfig) -> tuple[Lookup, Lookup]:
+            weather, air = await asyncio.gather(
+                sources.read(
+                    STATION_READINGS,
+                    station_id=station.appwrite_id,
+                    since=now - timedelta(hours=LIVE_LOOKBACK_HOURS),
+                    stale_before=now - timedelta(minutes=LIVE_STALE_MINUTES),
+                    limit=1,
+                ),
+                sources.read(
+                    AIR_QUALITY,
+                    station_id=station.appwrite_id,
+                    since=now - timedelta(minutes=AIR_MAX_AGE_MIN),
+                    extra=_AIR_CURRENT,
+                    limit=1,
+                ),
+            )
+            return weather, air
+
+        # Every table is read independently (TableResolver never raises), so
+        # one missing or failing table only affects its own piece.
+        alerts_lookup, *station_lookups = await asyncio.gather(
+            sources.read(ALERTS, limit=50),
             *(fetch_station(s) for s in stations.values()),
-            return_exceptions=True,
         )
 
-        for result in results:
-            if isinstance(result, OKRWeatherApiAuthError):
-                # Live tables are public — a 401 here means the endpoint or
-                # project id is wrong. Reauth only asks for an API key and
-                # could never fix that, so fail the update and point at
-                # reconfigure.
+        lookups = [alerts_lookup, *(lk for pair in station_lookups for lk in pair)]
+        if not any(lk.answered for lk in lookups):
+            errors = [err for lk in lookups for err in lk.errors]
+            if any(isinstance(err, OKRWeatherApiAuthError) for err in errors):
+                # Live tables are public — 401 everywhere means the endpoint
+                # or project id is wrong. Reauth only asks for an API key and
+                # could never fix that, so point at reconfigure.
                 raise UpdateFailed(
                     f"Backend rejected the project — fix endpoint/project "
-                    f"via reconfigure: {result}"
+                    f"via reconfigure: {errors[0]}"
                 )
-        if all(isinstance(result, BaseException) for result in results):
-            raise UpdateFailed(str(results[0]))
+            if errors:
+                raise UpdateFailed(f"Backend unreachable: {errors[0]}")
 
         previous = self.data or {}
-        alerts_result, *station_results = results
-
-        if isinstance(alerts_result, BaseException):
-            LOGGER.warning(
-                "Alert fetch failed (keeping previous alerts): %s", alerts_result
-            )
+        if alerts_lookup.failed:
             active_alerts: list[dict[str, Any]] = previous.get("alerts") or []
         else:
-            now = datetime.now(UTC)
             # Alert rows are kept as history; only active (or legacy, status
             # null) rows that have not expired are current.
             active_alerts = [
                 alert
-                for alert in alerts_result
+                for alert in alerts_lookup.rows
                 if alert.get("status") in (None, "active")
                 and (
                     (expires := parse_iso(alert.get("expirationTime"))) is None
@@ -175,40 +231,29 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
             ]
 
         data: dict[str, Any] = {"alerts": active_alerts, "stations": {}}
-        for (sid, station), result in zip(
-            stations.items(), station_results, strict=True
+        for (sid, station), (weather_lookup, air_lookup) in zip(
+            stations.items(), station_lookups, strict=True
         ):
-            if isinstance(result, BaseException):
-                LOGGER.warning(
-                    "Live fetch for station '%s' failed (keeping previous "
-                    "data): %s",
-                    station.slug,
-                    result,
-                )
-                result = previous.get("stations", {}).get(sid) or {
-                    "weather": None,
-                    "air": None,
-                    "lightning": None,
-                }
+            before = previous.get("stations", {}).get(sid) or {}
+            weather = _keep_or(weather_lookup, before.get("weather"))
+            air = valid_air(_keep_or(air_lookup, before.get("air")), now)
             # Stations report absolute pressure at their elevation; derive
             # the sea-level value once here so every consumer agrees.
-            if isinstance(weather := result.get("weather"), dict):
-                result = {
-                    **result,
-                    "weather": {
-                        **weather,
-                        "sea_level_pressure_hpa": sea_level_pressure(
-                            weather.get("air_pressure_hpa"),
-                            station.elevation_m,
-                            weather.get("air_temperature_c"),
-                        ),
-                    },
+            if isinstance(weather, dict):
+                weather = {
+                    **weather,
+                    "sea_level_pressure_hpa": sea_level_pressure(
+                        weather.get("air_pressure_hpa"),
+                        station.elevation_m,
+                        weather.get("air_temperature_c"),
+                    ),
                 }
             # Alerts are regional — publish each station's pre-filtered slice
             # so all entities agree. No alert_location_id means no alerts
             # (conservative; the metadata refresh normally fills it in).
             data["stations"][sid] = {
-                **result,
+                "weather": weather,
+                "air": air,
                 "alerts": self._station_alerts(active_alerts, station),
             }
         return data
@@ -233,9 +278,10 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
 class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
     """Polls the active premium AI tables.
 
-    Each table is fetched once (newest rows across all stations) and grouped
-    client-side. Rows older than the per-feature freshness window are
-    discarded so entities report *unknown* instead of freezing on stale data.
+    Each table is fetched once (newest rows across all stations, bounded to
+    the per-feature freshness window) and grouped client-side. Rows older
+    than that window are discarded so entities report *unknown* instead of
+    freezing on stale data.
     """
 
     def __init__(
@@ -245,7 +291,6 @@ class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
         update_interval: timedelta,
     ) -> None:
         super().__init__(hass, entry, name="insights", update_interval=update_interval)
-        self._denied_tables: set[str] = set()
 
     async def _async_update_data(self) -> dict[str, Any]:
         runtime = self.config_entry.runtime_data
@@ -259,37 +304,44 @@ class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
         # fleet — not by how few stations this hub configured.
         fleet = max(len(stations), runtime.backend_station_count)
         row_limit = max(12, 4 * fleet)
+        now = datetime.now(UTC)
 
-        fetches = [
-            self.client.recent_insight_rows(INSIGHT_TABLES[section], row_limit)
-            for section in sections
-        ]
-        fetches.append(self.client.radar_rows())
-        results = await asyncio.gather(*fetches, return_exceptions=True)
-        radar_result = results.pop()
+        lookups = await asyncio.gather(
+            *(
+                self.sources.read(
+                    INSIGHT_SOURCES[section],
+                    since=now - timedelta(minutes=INSIGHT_MAX_AGE_MIN[section]),
+                    limit=row_limit,
+                )
+                for section in sections
+            ),
+            # Radar rows are keyed by city; staleness is judged per city below.
+            self.sources.read(RADAR, limit=25),
+        )
+        radar_lookup = lookups.pop()
+
+        errors = [err for lk in (*lookups, radar_lookup) for err in lk.errors]
+        if (
+            errors
+            and not any(lk.answered for lk in (*lookups, radar_lookup))
+            and all(isinstance(err, OKRWeatherApiAuthError) for err in errors)
+        ):
+            # Every premium table rejected the key — reauth is the fix. A 401
+            # on just one table is skipped like any other per-table error.
+            raise ConfigEntryAuthFailed(str(errors[0]))
 
         table_rows: dict[str, list[dict[str, Any]]] = {}
-        for section, result in zip(sections, results, strict=True):
-            table = INSIGHT_TABLES[section]
-            if isinstance(result, OKRWeatherApiAuthError):
-                # The key itself is bad — reauth is the fix.
-                raise ConfigEntryAuthFailed(str(result))
-            if isinstance(result, OKRWeatherApiPermissionError):
-                # 403 on ONE table means the key lacks that table's scope.
-                # Reauth can't fix a per-table gap (and would loop forever),
-                # so log once and leave just this section empty.
-                self._log_denied(table, result)
+        for section, lookup in zip(sections, lookups, strict=True):
+            if not lookup.failed:
+                table_rows[section] = lookup.rows
+            elif all(
+                isinstance(err, OKRWeatherApiPermissionError) for err in lookup.errors
+            ):
+                # 403: the key lacks this table's scope. Reauth can't fix a
+                # per-table gap, so just this section stays empty.
                 table_rows[section] = []
-            elif isinstance(result, BaseException):
-                LOGGER.warning(
-                    "Fetch of AI table '%s' failed (keeping previous data): %s",
-                    table,
-                    result,
-                )
-                table_rows[section] = self._previous_rows(section)
             else:
-                self._denied_tables.discard(table)
-                table_rows[section] = result
+                table_rows[section] = self._previous_rows(section)
 
         data: dict[str, Any] = {"stations": {}}
         for sid, station in stations.items():
@@ -301,19 +353,8 @@ class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
             per_station[SECTION_RADAR] = None
             data["stations"][sid] = per_station
 
-        self._attach_radar(data, radar_result)
+        self._attach_radar(data, radar_lookup)
         return data
-
-    def _log_denied(self, table: str, err: Exception) -> None:
-        """Log a per-table permission gap once (re-logs if re-denied later)."""
-        if table not in self._denied_tables:
-            self._denied_tables.add(table)
-            LOGGER.warning(
-                "API key lacks access to table '%s'; its entities stay "
-                "unknown until access is granted: %s",
-                table,
-                err,
-            )
 
     def _previous_rows(self, section: str) -> list[dict[str, Any]]:
         """Recover the previously-published rows of a section after a failed fetch."""
@@ -342,15 +383,14 @@ class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
             return row
         return None
 
-    def _attach_radar(self, data: dict[str, Any], radar_result: Any) -> None:
+    def _attach_radar(self, data: dict[str, Any], radar_lookup: Lookup) -> None:
         """Group radar rows by city and attach the right city to each station."""
-        if isinstance(radar_result, OKRWeatherApiAuthError):
-            raise ConfigEntryAuthFailed(str(radar_result))
-        if isinstance(radar_result, OKRWeatherApiPermissionError):
-            self._log_denied(TABLE_RADAR_STATUS, radar_result)
-            return  # radar sections stay None
-        if isinstance(radar_result, BaseException):
-            LOGGER.warning("Radar fetch failed (keeping previous data): %s", radar_result)
+        if radar_lookup.failed:
+            if all(
+                isinstance(err, OKRWeatherApiPermissionError)
+                for err in radar_lookup.errors
+            ):
+                return  # radar sections stay None
             for sid, per_station in data["stations"].items():
                 if self.data:
                     previous = self.data.get("stations", {}).get(sid, {})
@@ -358,7 +398,7 @@ class OKRWeatherInsightsCoordinator(OKRWeatherCoordinator):
             return
 
         newest_per_city: dict[str, dict[str, Any]] = {}
-        for row in radar_result:
+        for row in radar_lookup.rows:
             city_id = row.get("city_id")
             if not city_id:
                 continue

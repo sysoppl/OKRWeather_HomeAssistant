@@ -150,7 +150,7 @@ class OKRWeatherConfigFlow(ConfigFlow, domain=DOMAIN):
     """Hub setup: credentials first, then pick the stations to add."""
 
     VERSION = 2
-    MINOR_VERSION = 1
+    MINOR_VERSION = 2
 
     def __init__(self) -> None:
         self._endpoint: str = DEFAULT_ENDPOINT

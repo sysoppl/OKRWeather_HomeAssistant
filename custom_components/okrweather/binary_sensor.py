@@ -30,7 +30,7 @@ from .const import (
     SECTION_STORM,
 )
 from .entity import OKRWeatherEntity
-from .util import age_minutes, normalize_enum
+from .util import age_minutes, normalize_enum, reading_time
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -248,7 +248,7 @@ class OKRStationOnlineBinarySensor(OKRWeatherEntity, BinarySensorEntity):
         row = self.section_row("weather")
         if not isinstance(row, dict):
             return False
-        age = age_minutes(row.get("measurementDate") or row.get("$createdAt"))
-        if age is None:
+        measured = reading_time(row)
+        if measured is None:
             return None
-        return age <= LIVE_STALE_MINUTES
+        return age_minutes(measured.isoformat()) <= LIVE_STALE_MINUTES

@@ -17,7 +17,7 @@ Three independent polling loops keep traffic minimal and data fresh:
 
 | Loop | Default | What it fetches |
 |---|---|---|
-| Live | 5 min | Station readings, air quality, lightning, government alerts |
+| Live | 5 min | Station readings, measured air quality (Airly), government alerts |
 | AI insights | 10 min | The premium AI tables (single batched request per table for all stations) |
 | Forecast | 30 min | Hourly + daily forecasts per city |
 
@@ -27,7 +27,7 @@ Three independent polling loops keep traffic minimal and data fresh:
 
 - **Weather entity** per station — live measurements merged with hourly, daily and twice-daily forecasts for the city nearest the station. When the station's rain gauge is measuring precipitation, the current condition reflects the *actual* rain, not the forecast.
 - **Live sensors** — temperature, apparent temperature, dew point, humidity, pressure (reduced to sea level using the station's elevation and temperature; the raw reading is available as a disabled-by-default *Station pressure* sensor), wind speed/gust/direction, max daily gust, precipitation rate, daily precipitation, UV index, solar radiation, light level, UV irradiance, ground temperature, soil moisture, snow depth, vapor pressure deficit, ionizing radiation.
-- **Air quality** — PM2.5, PM10, computed US-EPA AQI, CO, NO₂, NH₃ (for stations with an air probe).
+- **Air quality** — PM2.5, PM10 and a computed US-EPA AQI, measured by nearby Airly sensors (Gogolin: the average of 2 sensors). Created only for stations with an air-quality source; attributes carry the Polish air-quality level (GIOŚ scale) and the CAQI index. Dane: Airly.
 - **Weather alerts** — filtered to the station's own alert area (`powiat`), as a count sensor and a binary sensor with full details.
 - **Diagnostics** — *Station online* binary sensor (goes off when the station stops reporting) and *Last station update* timestamp.
 
@@ -41,7 +41,6 @@ The key unlocks the **active** AI analysis tables — each exposed with proper `
 - **Pressure Alert** — alert level & trend enums, change rate, *pressure alert* binary sensor
 - **Frost Alert** — probability, level enum, frost window, *frost alert* binary sensor
 - **Solar Forecast** — today's kWh, peak kW, efficiency, production label enum, parsed hourly production curve as attribute
-- **Air Quality Trend** — trend enum (waiting for AQ hardware; stays unknown until sensors exist)
 
 Stale AI rows are dropped automatically — if a backend function stops publishing, the entities go `unknown` instead of freezing on old data. If the API key is revoked, Home Assistant starts a re-authentication flow.
 
@@ -83,7 +82,7 @@ Premium features are part of the OKRWeather subscription tiers (3/6/12-month pla
 |---|---|---|
 | `weather` | `weather.<station>` | Free |
 | `sensor` | `sensor.<station>_temperature` etc. | Free |
-| `sensor` | `sensor.<station>_pm2_5`, `_aqi` etc. | Free (air probe) |
+| `sensor` | `sensor.<station>_pm2_5`, `_pm10`, `_aqi` | Free (stations with an air-quality source) |
 | `sensor` | `sensor.<station>_active_weather_alerts` | Free |
 | `binary_sensor` | `binary_sensor.<station>_weather_alert`, `_station_online` | Free |
 | `sensor` | `sensor.<station>_comfort_index`, `_comfort_level` | Premium |
@@ -92,10 +91,9 @@ Premium features are part of the OKRWeather subscription tiers (3/6/12-month pla
 | `sensor` | `sensor.<station>_pressure_alert_level`, `_pressure_trend` | Premium |
 | `sensor` | `sensor.<station>_frost_*` | Premium |
 | `sensor` | `sensor.<station>_solar_*` | Premium |
-| `sensor` | `sensor.<station>_air_quality_trend` | Premium |
 | `binary_sensor` | `_frost_alert`, `_storm_detected`, `_radar_rain`, `_rain_approaching`, `_pressure_alert` | Premium |
 
-Some sensors are disabled by default (ground temperature, soil moisture, snow depth, gas concentrations, radiation, light level, lightning distance) — enable them from the device page if your station reports them.
+Some sensors are disabled by default (ground temperature, soil moisture, snow depth, radiation, light level) — enable them from the device page if your station reports them.
 
 ## Dashboard cards
 
@@ -121,7 +119,7 @@ background_intensity: 140   # 0–200, default 100
 
 ### The full station card
 
-`custom:okrweather-card` shows the station header with a condition-adaptive accent palette, a details grid, the EPA-banded AQI meter, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar, air trend) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
+`custom:okrweather-card` shows the station header with a condition-adaptive accent palette, a details grid, the EPA-banded AQI meter, a government-alert banner, the premium AI insight tiles (comfort, radar, storm, pressure, frost, solar) and the forecast strip. Sections without data hide themselves — a free-tier setup simply shows no AI tiles.
 
 ```yaml
 type: custom:okrweather-card
@@ -143,7 +141,6 @@ insights:                       # premium AI tiles to render (default: all)
   - pressure
   - frost
   - solar
-  - air_trend
 compact: false                  # true hides captions and advisory texts
 ```
 
@@ -163,7 +160,7 @@ Smaller single-purpose widgets for composing your own dashboard. Every feature c
 | `custom:okrweather-pressure-card` | Pressure alert level, trend, Δ3h/Δ6h | — |
 | `custom:okrweather-frost-card` | Frost probability, level, window | — |
 | `custom:okrweather-solar-card` | Today's kWh, peak kW, efficiency | — |
-| `custom:okrweather-air-trend-card` | AI air-quality trend | — |
+| `custom:okrweather-air-trend-card` | AI air-quality trend (no data since 2.5.0; the card hides itself) | — |
 
 ```yaml
 # Example: a compact premium row
@@ -198,7 +195,7 @@ UI is translated to English and Polish. AI advisory texts follow the HA language
 ## Troubleshooting
 
 - **"Could not reach the OKRWeather backend"** — check that `api.skydark.pl` resolves and is reachable from your Home Assistant host.
-- **Premium sensors stay `unknown`** — either the backend function hasn't published a fresh row (rows older than the per-feature freshness window are ignored), or the station has no data for that feature (e.g. air-quality trend without AQ hardware).
+- **Premium sensors stay `unknown`** — either the backend function hasn't published a fresh row (rows older than the per-feature freshness window are ignored), or the station has no data for that feature.
 - **Re-authentication keeps appearing** — the API key was revoked or lost its scope; paste a new one or leave blank to drop to the free tier.
 - Download **diagnostics** from the integration page when filing an issue — the API key is redacted automatically.
 

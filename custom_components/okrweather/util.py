@@ -24,6 +24,17 @@ def parse_iso(value: Any) -> datetime | None:
     return dt
 
 
+def reading_time(row: dict[str, Any]) -> datetime | None:
+    """Observation time of a station reading.
+
+    ``measured_at`` in station-readings, ``measurementDate`` in the old
+    weather-data table, ``$createdAt`` as the last resort.
+    """
+    return parse_iso(
+        row.get("measured_at") or row.get("measurementDate") or row.get("$createdAt")
+    )
+
+
 def age_minutes(value: Any, *, now: datetime | None = None) -> float | None:
     """Age of an ISO timestamp in minutes, or None if unparseable."""
     dt = parse_iso(value)

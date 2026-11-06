@@ -29,10 +29,14 @@ DATABASE_ID: Final = "pogodaokr-data"
 SUBENTRY_TYPE_STATION: Final = "station"
 
 # ── Tables (free, read("any")) ───────────────────────────────────────────────
+# Some backend tables were renamed in 2026-11. Each "*_OLD" id is the previous
+# name; reads try the new id first and fall back to the old one while it
+# still exists (see sources.py), so every backend state keeps working.
 TABLE_STATIONS: Final = "weather-stations"
-TABLE_WEATHER: Final = "weather-data"
-TABLE_AIR: Final = "air-quality-data"
-TABLE_LIGHTNING: Final = "lightning-data"
+TABLE_STATION_READINGS: Final = "station-readings"
+TABLE_STATION_READINGS_OLD: Final = "weather-data"
+# Measured PM (Airly sensors); only stations with an air-quality source.
+TABLE_AIR_QUALITY: Final = "air-quality-readings"
 TABLE_HOURLY_FORECASTS: Final = "hourly-forecasts"
 TABLE_DAILY_FORECASTS: Final = "daily-forecasts"
 TABLE_ALERTS: Final = "weather-alerts"
@@ -41,11 +45,12 @@ TABLE_ALERTS: Final = "weather-alerts"
 # Disabled backend functions (sport, drying, outfit) are intentionally absent.
 TABLE_COMFORT_INDEX: Final = "comfort-index"
 TABLE_RADAR_STATUS: Final = "radar-status"
-TABLE_STORM_TRACKER: Final = "storm-tracker"
+TABLE_STORM_ALERTS: Final = "storm-alerts"
+TABLE_STORM_ALERTS_OLD: Final = "storm-tracker"
 TABLE_PRESSURE_ALERTS: Final = "pressure-alerts"
 TABLE_FROST_ALERTS: Final = "frost-alerts"
-TABLE_SOLAR_FORECAST: Final = "solar-forecast"
-TABLE_AIR_QUALITY_TRENDS: Final = "air-quality-trends"
+TABLE_SOLAR_FORECASTS: Final = "solar-forecasts"
+TABLE_SOLAR_FORECASTS_OLD: Final = "solar-forecast"
 
 # ── Insight sections (coordinator data keys) ─────────────────────────────────
 SECTION_COMFORT: Final = "comfort_index"
@@ -54,17 +59,15 @@ SECTION_STORM: Final = "storm_tracker"
 SECTION_PRESSURE: Final = "pressure_alert"
 SECTION_FROST: Final = "frost_alert"
 SECTION_SOLAR: Final = "solar_forecast"
-SECTION_AIR_TREND: Final = "air_quality_trend"
 
-# Section → premium table. Radar is handled separately (keyed by city, not
-# station), so it is not part of this map.
-INSIGHT_TABLES: Final[dict[str, str]] = {
-    SECTION_COMFORT: TABLE_COMFORT_INDEX,
-    SECTION_STORM: TABLE_STORM_TRACKER,
-    SECTION_PRESSURE: TABLE_PRESSURE_ALERTS,
-    SECTION_FROST: TABLE_FROST_ALERTS,
-    SECTION_SOLAR: TABLE_SOLAR_FORECAST,
-    SECTION_AIR_TREND: TABLE_AIR_QUALITY_TRENDS,
+# Section → candidate premium tables, new id first. Radar is handled
+# separately (keyed by city, not station), so it is not part of this map.
+INSIGHT_TABLES: Final[dict[str, tuple[str, ...]]] = {
+    SECTION_COMFORT: (TABLE_COMFORT_INDEX,),
+    SECTION_STORM: (TABLE_STORM_ALERTS, TABLE_STORM_ALERTS_OLD),
+    SECTION_PRESSURE: (TABLE_PRESSURE_ALERTS,),
+    SECTION_FROST: (TABLE_FROST_ALERTS,),
+    SECTION_SOLAR: (TABLE_SOLAR_FORECASTS, TABLE_SOLAR_FORECASTS_OLD),
 }
 
 # Maximum acceptable age (minutes) of an insight row before its data is
@@ -77,12 +80,31 @@ INSIGHT_MAX_AGE_MIN: Final[dict[str, int]] = {
     SECTION_PRESSURE: 60,      # cron */10
     SECTION_FROST: 12 * 60,    # cron 0 */3
     SECTION_SOLAR: 16 * 60,    # cron 0 */4
-    SECTION_AIR_TREND: 90,     # cron */15
 }
 
 # A station is considered offline when its newest weather row is older than
 # this (the stations report roughly once a minute).
 LIVE_STALE_MINUTES: Final = 15
+
+# Latest station reading: only rows of the last day are searched, so a
+# station that stopped reporting goes unknown instead of freezing forever.
+LIVE_LOOKBACK_HOURS: Final = 24
+
+# Measured air quality: the current aggregate row counts while it is at most
+# this old (Airly updates every 30-60 min).
+AIR_MAX_AGE_MIN: Final = 120
+
+# Entities whose backend data no longer exists (station lightning, the AI
+# air-quality trend and gas sensors). Config entry migration 2.2 removes them
+# from the entity registry.
+RETIRED_ENTITY_KEYS: Final = (
+    "lightning_distance",
+    "air_quality_trend",
+    "aqi_tracked",
+    "carbon_monoxide",
+    "nitrogen_dioxide",
+    "ammonia",
+)
 
 # ── Config-entry keys ────────────────────────────────────────────────────────
 CONF_API_KEY: Final = "api_key"
@@ -152,14 +174,6 @@ RADAR_TRENDS: Final = [
     "intensifying",
     "weakening",
     "departing",
-]
-AIR_TRENDS: Final = [
-    "improving_fast",
-    "improving",
-    "stable",
-    "deteriorating",
-    "deteriorating_fast",
-    "spike",
 ]
 SOLAR_LABELS: Final = ["excellent", "good", "fair", "poor", "very_poor"]
 

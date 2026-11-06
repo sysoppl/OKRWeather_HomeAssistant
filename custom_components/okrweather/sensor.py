@@ -2,11 +2,12 @@
 
 Two families of sensors, both per station:
 
-* **Live** — every reading of the physical station (weather, air quality,
-  lightning) plus a computed US-EPA AQI and a data-age timestamp.
+* **Live** — every reading of the physical station plus a data-age
+  timestamp, and measured air quality (PM2.5/PM10 from Airly sensors, with a
+  computed US-EPA AQI) for stations that have an air-quality source.
 * **Insight** — the active premium AI features: comfort index, radar
-  analysis, storm tracker, pressure alerts, frost alerts, solar forecast and
-  air-quality trend. Created only when the hub has an API key. Categorical
+  analysis, storm tracker, pressure alerts, frost alerts and solar forecast.
+  Created only when the hub has an API key. Categorical
   results are proper ``ENUM`` sensors so they translate and can be used in
   automations without string guessing.
 """
@@ -42,7 +43,6 @@ from homeassistant.const import (
 )
 
 from .const import (
-    AIR_TRENDS,
     COMFORT_LABELS,
     FROST_LEVELS,
     MS_TO_KMH,
@@ -50,7 +50,6 @@ from .const import (
     PRESSURE_TRENDS,
     RADAR_INTENSITIES,
     RADAR_TRENDS,
-    SECTION_AIR_TREND,
     SECTION_COMFORT,
     SECTION_FROST,
     SECTION_PRESSURE,
@@ -64,7 +63,7 @@ from .const import (
 from homeassistant.core import callback
 
 from .entity import OKRWeatherEntity
-from .util import compute_epa_aqi, normalize_enum, parse_iso
+from .util import compute_epa_aqi, normalize_enum, reading_time
 
 if TYPE_CHECKING:
     from homeassistant.core import HomeAssistant
@@ -122,7 +121,21 @@ def _percent_probability(key: str) -> Callable[[dict[str, Any]], Any]:
 
 
 def _row_timestamp(row: dict[str, Any]) -> Any:
-    return parse_iso(row.get("measurementDate") or row.get("$createdAt"))
+    return reading_time(row)
+
+
+def _air_attributes(row: dict[str, Any], loc: Localizer) -> dict[str, Any]:
+    """Context of a measured air-quality value (air-quality-readings row)."""
+    return {
+        "air_quality_level": row.get("gios_level"),
+        "air_quality_level_name": row.get("gios_level_name"),
+        "caqi": row.get("index_value"),
+        "caqi_level": row.get("index_level"),
+        "quality_check": row.get("qc_status"),
+        "sensors": row.get("members_used"),
+        "measured_until": row.get("till_at"),
+        "credit": "Dane: Airly",
+    }
 
 
 def _solar_hourly(row: dict[str, Any]) -> Any:
@@ -375,7 +388,8 @@ LIVE_AIR_SENSORS: tuple[OKRSensorDescription, ...] = (
         native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
         suggested_display_precision=1,
         section="air",
-        value_fn=_get("pm2_5_ug_m3"),
+        value_fn=_get("pm25"),
+        attributes_fn=_air_attributes,
     ),
     OKRSensorDescription(
         key="pm10",
@@ -385,7 +399,8 @@ LIVE_AIR_SENSORS: tuple[OKRSensorDescription, ...] = (
         native_unit_of_measurement=CONCENTRATION_MICROGRAMS_PER_CUBIC_METER,
         suggested_display_precision=1,
         section="air",
-        value_fn=_get("pm10_ug_m3"),
+        value_fn=_get("pm10"),
+        attributes_fn=_air_attributes,
     ),
     OKRSensorDescription(
         key="aqi",
@@ -393,55 +408,8 @@ LIVE_AIR_SENSORS: tuple[OKRSensorDescription, ...] = (
         device_class=SensorDeviceClass.AQI,
         state_class=SensorStateClass.MEASUREMENT,
         section="air",
-        value_fn=lambda row: compute_epa_aqi(row.get("pm2_5_ug_m3")),
-    ),
-    OKRSensorDescription(
-        key="carbon_monoxide",
-        translation_key="carbon_monoxide",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="ppm",
-        suggested_display_precision=3,
-        entity_registry_enabled_default=False,
-        section="air",
-        value_fn=_get("carbon_monoxide_ppm"),
-    ),
-    OKRSensorDescription(
-        key="nitrogen_dioxide",
-        translation_key="nitrogen_dioxide",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="ppm",
-        suggested_display_precision=3,
-        entity_registry_enabled_default=False,
-        section="air",
-        value_fn=_get("nitrogen_dioxide_ppm"),
-    ),
-    OKRSensorDescription(
-        key="ammonia",
-        translation_key="ammonia",
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement="ppm",
-        suggested_display_precision=3,
-        entity_registry_enabled_default=False,
-        section="air",
-        value_fn=_get("ammonia_ppm"),
-    ),
-)
-
-LIVE_LIGHTNING_SENSORS: tuple[OKRSensorDescription, ...] = (
-    OKRSensorDescription(
-        key="lightning_distance",
-        translation_key="lightning_distance",
-        device_class=SensorDeviceClass.DISTANCE,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=UnitOfLength.KILOMETERS,
-        suggested_display_precision=1,
-        entity_registry_enabled_default=False,
-        section="lightning",
-        value_fn=_get("distance"),
-        attributes_fn=lambda row, loc: {
-            "energy": row.get("energy"),
-            "measured_at": row.get("measurementDate") or row.get("$createdAt"),
-        },
+        value_fn=lambda row: compute_epa_aqi(row.get("pm25")),
+        attributes_fn=_air_attributes,
     ),
 )
 
@@ -723,35 +691,6 @@ INSIGHT_SENSORS: tuple[OKRSensorDescription, ...] = (
         section=SECTION_RADAR,
         value_fn=_percent_probability("p_rain_60min"),
     ),
-    # Air-quality trend — cron */15 (no AQ sensors on the stations right now,
-    # so these stay unknown until hardware shows up; that's expected).
-    OKRSensorDescription(
-        key="air_quality_trend",
-        translation_key="air_quality_trend",
-        device_class=SensorDeviceClass.ENUM,
-        options=AIR_TRENDS,
-        section=SECTION_AIR_TREND,
-        value_fn=_enum("trend"),
-        attributes_fn=lambda row, loc: {
-            "advisory": loc("advisory"),
-            "category": loc("aqi_category"),
-            "pm25_avg_6h": row.get("pm25_avg_6h"),
-            "pm25_avg_12h": row.get("pm25_avg_12h"),
-            "pm25_slope": row.get("pm25_slope"),
-            "is_spike": row.get("is_spike"),
-            "threshold_breach_hours": row.get("threshold_breach_hours"),
-            "analyzed_at": row.get("analyzed_at"),
-        },
-    ),
-    OKRSensorDescription(
-        key="aqi_tracked",
-        translation_key="aqi_tracked",
-        device_class=SensorDeviceClass.AQI,
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_registry_enabled_default=False,
-        section=SECTION_AIR_TREND,
-        value_fn=_get("aqi_current"),
-    ),
 )
 
 
@@ -769,7 +708,7 @@ async def async_setup_entry(
     for subentry_id, station in runtime.stations.items():
         entities: list[SensorEntity] = [
             OKRWeatherSensor(runtime.live_coordinator, station, desc)
-            for desc in LIVE_WEATHER_SENSORS + LIVE_LIGHTNING_SENSORS
+            for desc in LIVE_WEATHER_SENSORS
         ]
         entities.append(OKRAlertCountSensor(runtime.live_coordinator, station))
 

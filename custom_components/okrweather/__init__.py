@@ -46,6 +46,7 @@ from .const import (
     MAX_LIVE_INTERVAL,
     MIN_FORECAST_INTERVAL,
     MIN_LIVE_INTERVAL,
+    RETIRED_ENTITY_KEYS,
     SUBENTRY_TYPE_STATION,
 )
 from .coordinator import (
@@ -344,4 +345,34 @@ async def async_migrate_entry(
             subentry.title,
         )
 
+    if entry.version == 2 and entry.minor_version < 2:
+        # 2.1 → 2.2 (integration 2.5.0): the backend no longer has data for
+        # the station lightning, gas and AI air-quality trend sensors. Drop
+        # their registry entries so they don't linger as "unavailable".
+        # Registry cleanup must never block setup.
+        try:
+            _remove_retired_entities(hass, entry)
+        except Exception:  # noqa: BLE001
+            LOGGER.exception("Could not remove retired OKRWeather entities")
+        hass.config_entries.async_update_entry(entry, minor_version=2)
+
     return True
+
+
+def _remove_retired_entities(hass: HomeAssistant, entry: OKRWeatherConfigEntry) -> None:
+    """Remove the registry entries of entities whose data source is gone."""
+    station_ids = {
+        subentry.data.get(CONF_STATION_ID)
+        for subentry in entry.subentries.values()
+        if subentry.subentry_type == SUBENTRY_TYPE_STATION
+    }
+    retired = {
+        f"{station_id}_{key}"
+        for station_id in station_ids
+        if station_id
+        for key in RETIRED_ENTITY_KEYS
+    }
+    entity_registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(entity_registry, entry.entry_id):
+        if entity.unique_id in retired:
+            entity_registry.async_remove(entity.entity_id)

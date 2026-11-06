@@ -6,7 +6,7 @@ Hyperlocal weather data for **Powiat Krapkowicki / Opolski** (Opolskie, Poland) 
 
 **Free (no API key):**
 - Live weather (temperature, humidity, wind, pressure, UV, dew point, soil moisture, ground temp, precipitation and more)
-- Air quality (PM2.5, PM10, computed AQI, CO, NO₂, NH₃)
+- Air quality (PM2.5, PM10 and a computed AQI from nearby Airly sensors, for stations with an air-quality source)
 - Hourly, daily and twice-daily forecasts as a HA `weather` entity per station
 - Weather alerts filtered to your station's area
 - Station online / last update diagnostics
@@ -18,11 +18,10 @@ Hyperlocal weather data for **Powiat Krapkowicki / Opolski** (Opolskie, Poland) 
 - Pressure alert (level, trend, change rate)
 - Frost alert (probability, level, window)
 - Solar production forecast (kWh, peak kW, efficiency)
-- Air-quality trend
 
 **Bundled dashboard cards (no manual resources):**
 - **OKRWeather Card** — the full station widget: current conditions with a condition-adaptive palette, details grid, air quality, alert banner, AI insight tiles and forecast; fully configurable via the visual editor (EN/PL)
-- **11 feature cards** — small single-purpose widgets (forecast, details, air quality, alerts, comfort, radar, storm, pressure, frost, solar, air trend) for composing your own dashboard
+- **Feature cards** — small single-purpose widgets (forecast, details, air quality, alerts, comfort, radar, storm, pressure, frost, solar) for composing your own dashboard
 - **Configurable backgrounds** on every card — follow the weather, flat, seven ambient presets or fully custom colors, with an intensity slider
 
 ## After installing

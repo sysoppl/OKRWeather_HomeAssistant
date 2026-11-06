@@ -6,22 +6,30 @@ Released through GitHub releases and HACS; it runs in the users' Home Assistant.
 
 ## Inputs
 
-- `weather-data` (station readings, 1 row per minute per station)
+- `station-readings` (station readings, 1 row per minute per station)
 - `weather-stations` (active stations)
+- `air-quality-readings` (measured PM from Airly, stations with an air-quality source)
 - `hourly-forecasts` (Google, hourly), `daily-forecasts` (Google, daily)
-- `weather-alerts`, `radar-status`, `storm-tracker`, `pressure-alerts`, `frost-alerts`, `comfort-index`, `solar-forecast`
+- `weather-alerts`, `radar-status`, `storm-alerts`, `pressure-alerts`, `frost-alerts`, `comfort-index`, `solar-forecasts`
+
+Renamed tables fall back to their old ids (`weather-data`, `storm-tracker`, `solar-forecast`) while those still exist; the newest row wins (`custom_components/okrweather/sources.py`). Every table is read on its own, so a missing table only blanks its own values.
 
 ## Outputs
 
 - Home Assistant entities
 
+## Tests
+
+`pip install -r requirements_test.txt && pytest -q` (mocked backend, no Home Assistant install needed).
+
 ## Deploy
 
-Tag a release (version in `custom_components/okrweather/manifest.json`); HACS picks it up.
+Tag a release (version in `custom_components/okrweather/manifest.json`); HACS picks it up. User-facing changes go in `CHANGELOG.md`.
 
 ## Credits
 
 Dane: Google
+Dane: Airly
 Źródłem pochodzenia danych jest Instytut Meteorologii i Gospodarki Wodnej – Państwowy Instytut Badawczy.
 
 More detail (model, formulas, history): [`docs/DETAILS.md`](docs/DETAILS.md). Operations in this README take precedence.
