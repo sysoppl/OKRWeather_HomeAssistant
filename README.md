@@ -18,6 +18,8 @@ Renamed tables fall back to their old ids (`weather-data`, `storm-tracker`, `sol
 
 - Home Assistant entities
 
+Pressure contract: `pressure` sensor and the weather entity's current pressure are reduced to mean sea level (vendored `custom_components/okrweather/pressure.py`, same formula as the portal; unknown when the station elevation is unknown); forecast rows use `airPressureMsl`. The raw station-level `air_pressure_hpa` is only the diagnostic, disabled-by-default `station_pressure` sensor ("Station pressure (raw)").
+
 ## Tests
 
 `pip install -r requirements_test.txt && pytest -q` (mocked backend, no Home Assistant install needed).
