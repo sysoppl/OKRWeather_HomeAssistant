@@ -1,0 +1,47 @@
+{
+ "tolerance_hpa": 0.01,
+ "cases": [
+  {
+   "station_hpa": 995.2,
+   "elevation_m": 176,
+   "temperature_c": 8.4,
+   "expected_hpa": 1016.6425
+  },
+  {
+   "station_hpa": 1001.7,
+   "elevation_m": 189,
+   "temperature_c": -6.5,
+   "expected_hpa": 1026.2001
+  },
+  {
+   "station_hpa": 988,
+   "elevation_m": 169,
+   "temperature_c": 27.3,
+   "expected_hpa": 1007.1383
+  },
+  {
+   "station_hpa": 1003.4,
+   "elevation_m": 176,
+   "temperature_c": null,
+   "expected_hpa": 1024.5198
+  },
+  {
+   "station_hpa": 1013.2,
+   "elevation_m": 0,
+   "temperature_c": 10,
+   "expected_hpa": 1013.2
+  },
+  {
+   "station_hpa": null,
+   "elevation_m": 176,
+   "temperature_c": 10,
+   "expected_hpa": null
+  },
+  {
+   "station_hpa": 990.5,
+   "elevation_m": null,
+   "temperature_c": 5,
+   "expected_hpa": 990.5
+  }
+ ]
+}

@@ -21,6 +21,7 @@ failing request only blanks or freezes its own piece of data.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -56,6 +57,7 @@ from .util import (
     age_minutes,
     match_city,
     parse_iso,
+    reading_time,
     row_matches_station,
     sea_level_pressure,
 )
@@ -65,6 +67,10 @@ if TYPE_CHECKING:
 
     from .api import OKRWeatherApiClient
     from .data import OKRWeatherConfigEntry, StationConfig
+
+# Portal TEMP_CARRY_MS: how long a station's last valid temperature is
+# reused for the sea-level reduction when the reading has none.
+TEMP_CARRY_S = 3 * 3600
 
 # Current aggregate air-quality row of a station (AIRLY contract: the
 # averaged Gogolin sensors are written with source "aggregate").
@@ -152,6 +158,28 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
     ) -> None:
         super().__init__(hass, entry, name="live", update_interval=update_interval)
         self._station_meta_refreshed = False
+        # Last valid air temperature per station for the sea-level reduction.
+        self._last_temp: dict[str, tuple[datetime, float]] = {}
+
+    def _reduction_temperature(self, sid: str, weather: dict[str, Any]) -> float | None:
+        """Temperature used to reduce pressure to sea level.
+
+        Same rule as the portal (``reductionTemperature()`` in weatherApi.ts):
+        the reading's own air temperature; when it is NULL (GOG01's outdoor
+        sensor at night while pressure keeps reporting) the last valid value
+        of that station up to 3 h old; otherwise ``None`` (15 °C standard
+        atmosphere inside the formula).
+        """
+        at = reading_time(weather)
+        temp = weather.get("air_temperature_c")
+        if isinstance(temp, (int, float)) and not isinstance(temp, bool) and math.isfinite(temp):
+            if at is not None:
+                self._last_temp[sid] = (at, float(temp))
+            return float(temp)
+        prev = self._last_temp.get(sid)
+        if prev and at is not None and abs((at - prev[0]).total_seconds()) <= TEMP_CARRY_S:
+            return prev[1]
+        return None
 
     async def _async_update_data(self) -> dict[str, Any]:
         runtime = self.config_entry.runtime_data
@@ -238,14 +266,15 @@ class OKRWeatherLiveCoordinator(OKRWeatherCoordinator):
             weather = _keep_or(weather_lookup, before.get("weather"))
             air = valid_air(_keep_or(air_lookup, before.get("air")), now)
             # Stations report absolute pressure at their elevation; derive
-            # the sea-level value once here so every consumer agrees.
+            # the sea-level value once here so every consumer agrees
+            # (pressure contract: everything shown is sea level).
             if isinstance(weather, dict):
                 weather = {
                     **weather,
                     "sea_level_pressure_hpa": sea_level_pressure(
                         weather.get("air_pressure_hpa"),
                         station.elevation_m,
-                        weather.get("air_temperature_c"),
+                        self._reduction_temperature(sid, weather),
                     ),
                 }
             # Alerts are regional — publish each station's pre-filtered slice

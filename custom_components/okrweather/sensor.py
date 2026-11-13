@@ -192,8 +192,9 @@ LIVE_WEATHER_SENSORS: tuple[OKRSensorDescription, ...] = (
         value_fn=_get("air_humidity_pct"),
     ),
     OKRSensorDescription(
-        # Sea-level reduced — comparable with forecasts and other weather
-        # services. The raw reading lives on the station_pressure sensor.
+        # Pressure contract: reduced to mean sea level (WMO convention, same
+        # as the portal and the forecast rows). Unknown, never raw, when the
+        # station elevation is not known. Key (and so unique_id) unchanged.
         key="pressure",
         translation_key="pressure",
         device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE,
@@ -201,17 +202,17 @@ LIVE_WEATHER_SENSORS: tuple[OKRSensorDescription, ...] = (
         native_unit_of_measurement=UnitOfPressure.HPA,
         suggested_display_precision=1,
         section="weather",
-        value_fn=lambda row: row.get("sea_level_pressure_hpa")
-        if row.get("sea_level_pressure_hpa") is not None
-        else row.get("air_pressure_hpa"),
+        value_fn=_get("sea_level_pressure_hpa"),
     ),
     OKRSensorDescription(
+        # Raw station-level reading (diagnostic, disabled by default).
         key="station_pressure",
         translation_key="station_pressure",
         device_class=SensorDeviceClass.ATMOSPHERIC_PRESSURE,
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=UnitOfPressure.HPA,
         suggested_display_precision=1,
+        entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         section="weather",
         value_fn=_get("air_pressure_hpa"),

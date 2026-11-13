@@ -7,6 +7,8 @@ import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from .pressure import sea_level_pressure as _msl
+
 if TYPE_CHECKING:
     from .data import StationConfig
 
@@ -157,23 +159,21 @@ def sea_level_pressure(
     elevation_m: float | None,
     temperature_c: Any,
 ) -> float | None:
-    """Reduce station pressure to sea level (temperature-compensated).
+    """Station pressure reduced to mean sea level (what every entity shows).
 
-    Standard barometric reduction: P0 = P · (1 − L·h / (T + L·h + 273.15))^−5.257
-    with L = 0.0065 K/m. Falls back to the ISA temperature (15 °C) when the
-    station temperature is missing, and to the raw value when the station
-    has no elevation on record.
+    Formula and fallbacks come from the vendored contract module
+    ``pressure.py`` (identical to the Pogoda OKR portal): 15 °C when the
+    temperature is missing, raw value at elevation 0. Integration policy on
+    top: an UNKNOWN elevation gives ``None`` (entity "unknown") instead of
+    passing station-level pressure off as "the pressure".
     """
-    if not isinstance(pressure_hpa, (int, float)):
+    if not isinstance(pressure_hpa, (int, float)) or isinstance(pressure_hpa, bool):
         return None
-    if not isinstance(elevation_m, (int, float)) or elevation_m == 0:
-        return round(float(pressure_hpa), 2)
-    temp = float(temperature_c) if isinstance(temperature_c, (int, float)) else 15.0
-    lapse = 0.0065 * float(elevation_m)
-    return round(
-        float(pressure_hpa) * (1 - lapse / (temp + lapse + 273.15)) ** -5.257,
-        2,
-    )
+    if not isinstance(elevation_m, (int, float)) or isinstance(elevation_m, bool):
+        return None
+    temp = float(temperature_c) if isinstance(temperature_c, (int, float)) else None
+    value = _msl(float(pressure_hpa), float(elevation_m), temp)
+    return None if value is None else round(value, 2)
 
 
 def compute_epa_aqi(pm25: float | None) -> int | None:

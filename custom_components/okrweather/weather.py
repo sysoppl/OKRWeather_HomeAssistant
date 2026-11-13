@@ -265,11 +265,9 @@ class OKRStationWeather(CoordinatorEntity["OKRWeatherLiveCoordinator"], WeatherE
 
     @property
     def native_pressure(self) -> float | None:
-        # Sea-level reduced (derived by the live coordinator) — matches what
-        # forecasts and other weather services report.
-        if (value := self._live("sea_level_pressure_hpa")) is not None:
-            return value
-        return self._live("air_pressure_hpa")
+        # Sea-level reduced (derived by the live coordinator), like the
+        # forecast rows (airPressureMsl). Unknown rather than station level.
+        return self._live("sea_level_pressure_hpa")
 
     @property
     def native_wind_speed(self) -> float | None:
